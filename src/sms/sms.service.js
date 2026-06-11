@@ -11,6 +11,18 @@ import config from '../config/index.js';
 import logger from '../logger/index.js';
 import { broadcast } from '../web/server.js';
 
+/**
+ * 检测内容是否为运营商长短信拆分产生的片段
+ * 文本模式下超长短信被拆成多条，尾部常含 URL 参数残片等无意义内容
+ * 片段特征：短（<20字符）、无中文、无验证码关键词
+ */
+function isFragment(content) {
+  if (!content || content.length >= 20) return false;
+  if (/[\u4e00-\u9fff]/.test(content)) return false;
+  if (/验证码|校验码|动态码|code|otp|pin/i.test(content)) return false;
+  return true;
+}
+
 // 根据配置动态加载通知渠道
 const notifierModule = config.notifier === 'bark'
   ? await import('../notifier/bark.js')
@@ -45,12 +57,17 @@ export async function handleNewSms(index) {
 
     logger.info({ phone: sms.phone, otp: sms.otp }, '处理新短信');
 
-    // 4. 推送通知
-    const forwarded = await notifier.send({
-      phone: sms.phone,
-      content: sms.content,
-      otp: sms.otp,
-    });
+    // 4. 推送通知（长短信片段不推送，仅入库）
+    let forwarded = false;
+    if (isFragment(sms.content)) {
+      logger.info({ phone: sms.phone, content: sms.content }, '检测到长短信片段，跳过推送');
+    } else {
+      forwarded = await notifier.send({
+        phone: sms.phone,
+        content: sms.content,
+        otp: sms.otp,
+      });
+    }
 
     // 5. 入库
     insertSms({
@@ -109,11 +126,16 @@ export async function scanUnread() {
 
       logger.info({ phone: sms.phone, otp: sms.otp, index: msg.index }, '补推未读短信');
 
-      const forwarded = await notifier.send({
-        phone: sms.phone,
-        content: sms.content,
-        otp: sms.otp,
-      });
+      let forwarded = false;
+      if (isFragment(sms.content)) {
+        logger.info({ phone: sms.phone, content: sms.content }, '检测到长短信片段，跳过推送');
+      } else {
+        forwarded = await notifier.send({
+          phone: sms.phone,
+          content: sms.content,
+          otp: sms.otp,
+        });
+      }
 
       insertSms({
         hash,
