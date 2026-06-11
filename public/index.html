@@ -391,7 +391,7 @@
       animation: slideUp 0.25s ease-out;
     }
     .send-result.ok { background: var(--accent-dim); color: var(--accent); }
-    .send-result.err { background: rgba(220,53,69,0.08); color: var(--danger); }
+    .send-result.err { background: rgba(220,53,69,0.08); color: var(--danger); cursor: pointer; }
 
     /* ─── 状态面板 ─── */
     .status-grid {
@@ -639,7 +639,10 @@
             </div>
           </div>
           <button class="send-btn" @click="sendSms()" :disabled="sending || !sendPhone || !sendContent" x-text="sending ? '发送中…' : '发送短信'"></button>
-          <div class="send-result" :class="sendResult?.ok ? 'ok' : 'err'" x-show="sendResult" x-transition x-text="sendResult?.msg"></div>
+          <div class="send-result" :class="sendResult?.ok ? 'ok' : 'err'" x-show="sendResult" x-transition @click="sendResult = null">
+            <span x-text="sendResult?.msg"></span>
+            <template x-if="!sendResult?.ok"><span style="margin-left:8px;opacity:0.6;font-size:11px">点击关闭</span></template>
+          </div>
         </div>
       </div>
 
@@ -856,7 +859,6 @@
             const data = await res.json();
             if (res.ok) {
               this.sendResult = { ok: true, msg: '发送成功' };
-              // 立即在消息列表中显示已发送的短信
               this.messages.unshift({
                 id: Date.now(),
                 phone: this.sendPhone,
@@ -866,14 +868,31 @@
               });
               this.total++;
               this.sendContent = '';
+              // 成功才自动消失
+              setTimeout(() => this.sendResult = null, 3000);
             } else {
-              this.sendResult = { ok: false, msg: data.error || '发送失败' };
+              this.sendResult = { ok: false, msg: this.mapError(data.error) };
             }
           } catch (e) {
-            this.sendResult = { ok: false, msg: '网络错误' };
+            this.sendResult = { ok: false, msg: '网络连接失败，请检查 N1 是否在线' };
           }
           this.sending = false;
-          setTimeout(() => this.sendResult = null, 4000);
+        },
+
+        // 将 AT 错误映射为用户友好的提示
+        mapError(msg) {
+          if (!msg) return '发送失败';
+          if (msg.includes('超时')) return '发送超时，模块可能无信号或号码格式错误';
+          if (msg.includes('未连接')) return '4G 模块未连接，请检查 USB 连接';
+          if (msg.includes('+CMS ERROR: 500')) return '发送失败，未知错误（500）';
+          if (msg.includes('+CMS ERROR: 301')) return 'SMS 服务不可用，SIM 卡可能未激活短信功能';
+          if (msg.includes('+CMS ERROR: 302')) return '短信服务被拒绝';
+          if (msg.includes('+CMS ERROR: 304')) return '号码格式无效';
+          if (msg.includes('+CMS ERROR: 305')) return '号码被禁止';
+          if (msg.includes('+CMS ERROR: 330')) return '网络不可用';
+          if (msg.includes('+CMS ERROR: 331')) return '网络超时';
+          if (msg.includes('+CMS ERROR')) return '模块返回错误: ' + msg;
+          return msg;
         },
 
         // ─── 状态 ───
