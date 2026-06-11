@@ -131,12 +131,14 @@ class Modem extends EventEmitter {
    * @param {string} content - 短信内容
    * @returns {Promise<string[]>}
    */
-  sendSms(phone, content) {
-    return new Promise((resolve, reject) => {
-      const encodedPhone = encodeUCS2Hex(phone);
-      const encodedContent = encodeUCS2Hex(content);
+  async sendSms(phone, content) {
+    // 确保字符集为 UCS2（发送中文内容必须）
+    await this.send('AT+CSCS="UCS2"');
 
-      // 包装为特殊的两阶段队列项
+    const encodedPhone = encodeUCS2Hex(phone);
+    const encodedContent = encodeUCS2Hex(content);
+
+    return new Promise((resolve, reject) => {
       this._queue.push({
         command: `AT+CMGS="${encodedPhone}"`,
         resolve,
@@ -209,19 +211,6 @@ class Modem extends EventEmitter {
     // 没有正在执行的命令，忽略非 URC 数据
     if (!this._current) return;
 
-    // AT+CMGS 两阶段：收到 ">" 提示符时发送短信内容
-    if (trimmed === '>' && this._current._smsPayload) {
-      const payload = this._current._smsPayload;
-      delete this._current._smsPayload;
-      logger.debug('收到 > 提示符，发送短信内容');
-      this._port.write(`${payload}\x1a`, (err) => {
-        if (err) {
-          this._rejectCurrent(new Error(`短信内容写入失败: ${err.message}`));
-        }
-      });
-      return;
-    }
-
     // 命令响应终止符
     if (trimmed === 'OK') {
       this._resolveCurrent(this._responseBuffer.slice());
@@ -277,15 +266,54 @@ class Modem extends EventEmitter {
 
     // 设置超时
     this._timeoutTimer = setTimeout(() => {
+      this._cleanupRawListener();
       logger.error({ command: this._current?.command }, 'AT 指令超时');
       this._rejectCurrent(new Error(`AT 指令超时: ${this._current?.command}`));
     }, this._current.timeout);
 
+    // AT+CMGS 两阶段：需要监听原始数据捕获 ">" 提示符
+    // ReadlineParser 按 \r\n 分割，但 ">" 不以 \r\n 结尾
+    if (this._current._smsPayload) {
+      this._setupRawListener();
+    }
+
     this._port.write(`${this._current.command}\r\n`, (err) => {
       if (err) {
+        this._cleanupRawListener();
         this._rejectCurrent(new Error(`串口写入失败: ${err.message}`));
       }
     });
+  }
+
+  /**
+   * 注册原始数据监听，捕获 AT+CMGS 的 ">" 提示符
+   */
+  _setupRawListener() {
+    this._rawHandler = (data) => {
+      const raw = data.toString();
+      if (raw.includes('>') && this._current?._smsPayload) {
+        const payload = this._current._smsPayload;
+        delete this._current._smsPayload;
+        this._cleanupRawListener();
+        logger.debug('收到 > 提示符（raw），发送短信内容');
+        this._port.write(`${payload}\x1a`, (err) => {
+          if (err) {
+            this._rejectCurrent(new Error(`短信内容写入失败: ${err.message}`));
+          }
+        });
+      }
+    };
+    this._port.on('data', this._rawHandler);
+  }
+
+  /**
+   * 清理原始数据监听
+   */
+  _cleanupRawListener() {
+    if (this._rawHandler) {
+      this._port.removeListener('data', this._rawHandler);
+      this._rawHandler = null;
+    }
   }
 
   /**
@@ -297,6 +325,7 @@ class Modem extends EventEmitter {
 
     clearTimeout(this._timeoutTimer);
     this._timeoutTimer = null;
+    this._cleanupRawListener();
 
     const { resolve } = this._current;
     this._current = null;
@@ -317,6 +346,7 @@ class Modem extends EventEmitter {
 
     clearTimeout(this._timeoutTimer);
     this._timeoutTimer = null;
+    this._cleanupRawListener();
 
     const { reject } = this._current;
     this._current = null;
