@@ -100,7 +100,12 @@ class Modem extends EventEmitter {
         }
         this._reconnectAttempt = 0;
         logger.info({ port: config.serial.port, baudRate: config.serial.baudRate }, '串口已打开');
-        resolve();
+
+        // 取消模块可能残留的输入等待状态（如 AT+CMGS 的 ">" 提示）
+        // 发送 ESC + Ctrl+Z + 空行，确保模块回到命令模式
+        this._port.write('\x1b\x1a\r\n', () => {
+          setTimeout(() => resolve(), 500);
+        });
       });
     });
   }
