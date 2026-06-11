@@ -1,0 +1,27 @@
+[Unit]
+Description=SMS Forwarder - Air724UG SMS Gateway
+After=network.target
+# 等待 USB 设备就绪
+After=dev-ttyUSB0.device
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sms-forwarder
+ExecStart=/usr/bin/node src/app.js
+Restart=always
+RestartSec=5
+# 串口断开后等待 10 秒再重启，给 USB 重新枚举留时间
+StartLimitIntervalSec=60
+StartLimitBurst=10
+Environment=NODE_ENV=production
+
+# 安全加固
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/sms-forwarder/data /opt/sms-forwarder/logs
+# 串口访问需要 /dev
+DeviceAllow=/dev/ttyUSB* rw
+
+[Install]
+WantedBy=multi-user.target
