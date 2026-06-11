@@ -17,6 +17,7 @@ import logger from './logger/index.js';
 import { closeDb } from './database/sqlite.js';
 import modem from './serial/modem.js';
 import { handleNewSms, scanUnread, handleStorageFull } from './sms/sms.service.js';
+import { startWebServer } from './web/server.js';
 
 /** @type {NodeJS.Timeout|null} */
 let cnmiTimer = null;
@@ -166,7 +167,10 @@ async function main() {
     // 7. 启动 CNMI 定时刷新
     startCnmiRefresh();
 
-    // 8. 注册信号处理
+    // 8. 启动 Web 面板
+    startWebServer();
+
+    // 9. 注册信号处理
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));
 

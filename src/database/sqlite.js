@@ -25,9 +25,15 @@ db.exec(`
     received_at DATETIME,
     forwarded INTEGER DEFAULT 0,
     raw TEXT,
+    direction TEXT DEFAULT 'in',
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   )
 `);
+
+// 兼容旧数据库：如果 direction 列不存在则添加
+try {
+  db.exec('ALTER TABLE sms_logs ADD COLUMN direction TEXT DEFAULT \'in\'');
+} catch { /* 列已存在，忽略 */ }
 
 const stmtInsert = db.prepare(`
   INSERT OR IGNORE INTO sms_logs (hash, sms_index, phone, content, otp, received_at, forwarded, raw)
@@ -77,6 +83,72 @@ export function insertSms(record) {
   return stmtInsert.run(record);
 }
 
+const stmtInsertSent = db.prepare(`
+  INSERT INTO sms_logs (hash, sms_index, phone, content, otp, received_at, forwarded, raw, direction)
+  VALUES (@hash, 0, @phone, @content, NULL, @sentAt, 1, '', 'out')
+`);
+
+/**
+ * 记录已发送的短信
+ * @param {{ phone: string, content: string }} msg
+ */
+export function insertSentSms({ phone, content }) {
+  const sentAt = new Date().toISOString();
+  const hash = generateHash(phone, content, sentAt);
+  return stmtInsertSent.run({ hash, phone, content, sentAt });
+}
+
+// ─── Web 面板查询 ────────────────────────────────────────
+
+const stmtQueryMessages = db.prepare(`
+  SELECT id, phone, content, otp, received_at, forwarded, direction, created_at
+  FROM sms_logs
+  ORDER BY created_at DESC
+  LIMIT @limit OFFSET @offset
+`);
+
+const stmtQueryByPhone = db.prepare(`
+  SELECT id, phone, content, otp, received_at, forwarded, direction, created_at
+  FROM sms_logs
+  WHERE phone LIKE @phone
+  ORDER BY created_at DESC
+  LIMIT @limit OFFSET @offset
+`);
+
+const stmtCountAll = db.prepare(`SELECT COUNT(*) as total FROM sms_logs`);
+const stmtCountByPhone = db.prepare(`SELECT COUNT(*) as total FROM sms_logs WHERE phone LIKE @phone`);
+
+/**
+ * 分页查询消息记录
+ * @param {{ page?: number, pageSize?: number, phone?: string }} opts
+ * @returns {{ messages: object[], total: number, page: number, pageSize: number }}
+ */
+export function queryMessages({ page = 1, pageSize = 20, phone } = {}) {
+  const offset = (page - 1) * pageSize;
+  const params = { limit: pageSize, offset };
+
+  let messages, total;
+  if (phone) {
+    const phoneLike = `%${phone}%`;
+    messages = stmtQueryByPhone.all({ ...params, phone: phoneLike });
+    total = stmtCountByPhone.get({ phone: phoneLike }).total;
+  } else {
+    messages = stmtQueryMessages.all(params);
+    total = stmtCountAll.get().total;
+  }
+
+  return { messages, total, page, pageSize };
+}
+
+/**
+ * 根据 ID 查询单条消息
+ * @param {number} id
+ * @returns {object|undefined}
+ */
+export function getMessageById(id) {
+  return db.prepare('SELECT * FROM sms_logs WHERE id = ?').get(id);
+}
+
 /**
  * 关闭数据库连接
  */
@@ -89,4 +161,4 @@ export function closeDb() {
   }
 }
 
-export default { generateHash, existsByHash, insertSms, closeDb };
+export default { generateHash, existsByHash, insertSms, insertSentSms, queryMessages, getMessageById, closeDb };

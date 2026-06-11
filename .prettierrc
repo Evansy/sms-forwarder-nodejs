@@ -1,0 +1,19 @@
+{
+  "printWidth": 120,
+  "trailingComma": "es5",
+  "tabWidth": 2,
+  "singleQuote": true,
+  "bracketSameLine": false,
+  "quoteProps": "preserve",
+  "arrowParens": "always",
+  "overrides": [
+    {
+      "files": [
+        "*.md"
+      ],
+      "options": {
+        "embeddedLanguageFormatting": "off"
+      }
+    }
+  ]
+}

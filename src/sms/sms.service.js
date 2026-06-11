@@ -9,6 +9,7 @@ import { buildSmsRecord } from './sms.parser.js';
 import { generateHash, existsByHash, insertSms } from '../database/sqlite.js';
 import config from '../config/index.js';
 import logger from '../logger/index.js';
+import { broadcast } from '../web/server.js';
 
 // 根据配置动态加载通知渠道
 const notifierModule = config.notifier === 'bark'
@@ -63,7 +64,16 @@ export async function handleNewSms(index) {
       raw: lines.join('\n'),
     });
 
-    // 6. 删除 SIM 卡上的短信
+    // 6. WebSocket 实时推送到 Web 面板
+    broadcast('sms', {
+      phone: sms.phone,
+      content: sms.content,
+      otp: sms.otp,
+      timestamp: sms.timestamp,
+      forwarded,
+    });
+
+    // 7. 删除 SIM 卡上的短信
     await deleteSms(index);
   } catch (err) {
     logger.error({ err, index }, '处理短信失败');

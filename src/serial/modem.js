@@ -6,6 +6,19 @@ import logger from '../logger/index.js';
 import { parseCMTI, isURC } from './parser.js';
 
 /**
+ * 将字符串编码为 UCS2 hex（用于发送短信）
+ * @param {string} str
+ * @returns {string}
+ */
+function encodeUCS2Hex(str) {
+  let hex = '';
+  for (let i = 0; i < str.length; i++) {
+    hex += str.charCodeAt(i).toString(16).padStart(4, '0').toUpperCase();
+  }
+  return hex;
+}
+
+/**
  * AT 指令队列项
  * @typedef {object} QueueItem
  * @property {string} command
@@ -106,6 +119,44 @@ class Modem extends EventEmitter {
   }
 
   /**
+   * 发送短信（AT+CMGS 两阶段指令）
+   *
+   * 流程:
+   *   1. AT+CMGS="phone" → 等待 ">" 提示符
+   *   2. 短信内容 + \x1a (Ctrl+Z) → 等待 OK
+   *
+   * UCS2 模式下号码和内容都需要 hex 编码
+   *
+   * @param {string} phone - 目标号码
+   * @param {string} content - 短信内容
+   * @returns {Promise<string[]>}
+   */
+  sendSms(phone, content) {
+    return new Promise((resolve, reject) => {
+      const encodedPhone = encodeUCS2Hex(phone);
+      const encodedContent = encodeUCS2Hex(content);
+
+      // 包装为特殊的两阶段队列项
+      this._queue.push({
+        command: `AT+CMGS="${encodedPhone}"`,
+        resolve,
+        reject,
+        timeout: 60_000,
+        _smsPayload: encodedContent,
+      });
+      this._processQueue();
+    });
+  }
+
+  /**
+   * 获取串口连接状态
+   * @returns {boolean}
+   */
+  get isConnected() {
+    return !!this._port?.isOpen;
+  }
+
+  /**
    * 关闭串口
    * @returns {Promise<void>}
    */
@@ -157,6 +208,19 @@ class Modem extends EventEmitter {
 
     // 没有正在执行的命令，忽略非 URC 数据
     if (!this._current) return;
+
+    // AT+CMGS 两阶段：收到 ">" 提示符时发送短信内容
+    if (trimmed === '>' && this._current._smsPayload) {
+      const payload = this._current._smsPayload;
+      delete this._current._smsPayload;
+      logger.debug('收到 > 提示符，发送短信内容');
+      this._port.write(`${payload}\x1a`, (err) => {
+        if (err) {
+          this._rejectCurrent(new Error(`短信内容写入失败: ${err.message}`));
+        }
+      });
+      return;
+    }
 
     // 命令响应终止符
     if (trimmed === 'OK') {

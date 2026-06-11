@@ -31,6 +31,13 @@ Bark / 飞书
 - SIM 存储满自动清理
 - 优雅退出（SIGINT/SIGTERM）
 - 支持 PM2 / systemd 部署
+- **Web 管理面板**（默认端口 3000）
+  - 历史短信列表，支持号码搜索、无限滚动
+  - 在线发送短信
+  - 模块实时状态（信号、SIM、存储、运行时间）
+  - 实时日志流（WebSocket 推送）
+  - 浅色/深色主题切换，iPhone 完美适配
+  - 无需鉴权（内网使用场景）
 
 ## 前置条件
 
@@ -129,6 +136,10 @@ BARK_GROUP=sms
 
 DELETE_SMS_AFTER_FORWARD=true
 CNMI_REFRESH_INTERVAL=60000
+
+# Web 面板端口
+WEB_PORT=3000
+
 LOG_LEVEL=info
 ```
 
@@ -178,8 +189,11 @@ node src/app.js
 [INFO] 信号强度 csq="+CSQ: 20,99"
 [INFO] SIM 卡状态 cpin="+CPIN: READY"
 [INFO] 无未读短信
+[INFO] Web 面板已启动 port=3000
 [INFO] SMS Forwarder 启动完成，等待短信...
 ```
+
+Web 面板可通过浏览器访问 `http://<N1-IP>:3000`。
 
 此时给 giffgaff SIM 卡发一条短信，应该能看到：
 
@@ -328,10 +342,15 @@ sms-forwarder/
 │   │   ├── bark.js            # Bark 通知（默认）
 │   │   └── feishu.js          # 飞书通知
 │   ├── database/
-│   │   └── sqlite.js          # SQLite 操作
+│   │   └── sqlite.js          # SQLite 操作（含分页查询）
+│   ├── web/
+│   │   ├── server.js           # Express + WebSocket 服务
+│   │   └── routes.js           # REST API 路由
 │   ├── logger/
 │   │   └── index.js           # pino 日志
 │   └── app.js                 # 主入口
+├── public/
+│   └── index.html             # Web 面板单文件 SPA（Alpine.js）
 ├── data/                      # SQLite 数据库（自动创建）
 ├── logs/                      # 日志文件（自动创建）
 ├── sms-forwarder.service      # systemd service 文件
@@ -360,6 +379,35 @@ AT+CMGD 删除短信
 ```
 
 启动时额外执行 `AT+CMGL="REC UNREAD"` 扫描所有未读短信并补推，确保服务停机期间收到的短信不会遗漏。
+
+---
+
+## Web 管理面板
+
+启动服务后通过 `http://<N1-IP>:3000` 访问。
+
+功能分四个 Tab：
+
+| Tab | 功能 |
+|---|---|
+| 消息 | 历史短信列表，号码搜索，OTP 一键复制 |
+| 发送 | 在线发送短信（UCS2 编码，支持中文） |
+| 状态 | 信号强度、SIM 状态、存储用量、运行时间 |
+| 日志 | WebSocket 实时日志流 |
+
+**API 端点：**
+
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| GET | `/api/messages?page=1&pageSize=20&phone=xxx` | 分页查询消息 |
+| GET | `/api/messages/:id` | 消息详情 |
+| POST | `/api/sms/send` | 发送短信（body: `{ phone, content }`） |
+| GET | `/api/status` | 模块状态 |
+| GET | `/api/config` | 当前配置（脱敏） |
+
+WebSocket 连接 `ws://<N1-IP>:3000/ws`，接收新短信和日志推送。
+
+> 面板无鉴权，仅供内网使用。如需外网访问请配合反向代理 + 认证。
 
 ---
 
