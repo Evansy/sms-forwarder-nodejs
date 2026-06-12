@@ -123,11 +123,38 @@ async function processBatch(indices) {
 }
 
 /**
+ * 发送 AT+CMGL 指令（处理 CSCS 兼容性）
+ *
+ * Air724UG 文本模式下 CMGL 必须用字符串参数（"REC UNREAD"/"ALL"），
+ * 数字参数只在 PDU 模式有效，会返回 305 错误。
+ *
+ * 当 CSCS="UCS2" 时字符串参数可能被 hex 编码，所以：
+ *   1. 先尝试直接发送字符串参数
+ *   2. 如果 305 失败，临时切 GSM 字符集重试
+ *
+ * @param {string} filter - "REC UNREAD" | "ALL"
+ * @returns {Promise<string[]>}
+ */
+async function sendCmgl(filter) {
+  try {
+    return await modem.send(`AT+CMGL="${filter}"`);
+  } catch (err) {
+    if (!err.message?.includes('305')) throw err;
+
+    // 305 = 字符串参数被 UCS2 编码干扰，临时切 GSM 重试
+    logger.info({ filter }, 'CMGL 字符串参数失败(305)，切换 GSM 字符集重试');
+    await modem.send('AT+CSCS="GSM"');
+    try {
+      return await modem.send(`AT+CMGL="${filter}"`);
+    } finally {
+      try { await modem.send('AT+CSCS="UCS2"'); } catch { /* ignore */ }
+    }
+  }
+}
+
+/**
  * AT+CMGL 兜底扫描：读取所有未读短信
  * 用于 AT+CMGR 索引失效时的可靠回退
- *
- * 使用数字状态码（0=未读, 4=全部）替代字符串("REC UNREAD")，
- * 避免 CSCS="UCS2" 时字符串参数可能被 hex 编码处理的兼容性问题。
  */
 async function fallbackScanUnread() {
   try {
@@ -137,14 +164,12 @@ async function fallbackScanUnread() {
       logger.info({ cpms: cpmsLines.join(' ') }, 'CMGL 兜底: 当前存储区');
     } catch { /* ignore */ }
 
-    // 数字 0 = "REC UNREAD"
-    let lines = await modem.send('AT+CMGL=0');
+    let lines = await sendCmgl('REC UNREAD');
     let messages = parseCMGL(lines);
 
     if (messages.length === 0) {
-      // 如果未读为空，尝试读取所有（数字 4 = "ALL"）
       logger.info('CMGL 兜底: 未读为空，尝试读取全部短信');
-      lines = await modem.send('AT+CMGL=4');
+      lines = await sendCmgl('ALL');
       messages = parseCMGL(lines);
     }
 
@@ -259,8 +284,8 @@ export async function scanUnread() {
   try {
     logger.info('开始扫描未读短信...');
 
-    // 使用数字状态码 0="REC UNREAD"，避免 CSCS="UCS2" 影响字符串参数
-    const lines = await modem.send('AT+CMGL=0');
+    // 文本模式下必须用字符串参数，数字参数只在 PDU 模式有效（会返回 305）
+    const lines = await sendCmgl('REC UNREAD');
     const messages = parseCMGL(lines);
 
     if (messages.length === 0) {

@@ -261,6 +261,8 @@ class Modem extends EventEmitter {
     } finally {
       // 恢复文本模式（收短信依赖文本模式解析）
       try { await this.send('AT+CMGF=1'); } catch { /* ignore */ }
+      // 防御性恢复 UCS2 字符集（某些模块切换 CMGF 可能重置 CSCS）
+      try { await this.send('AT+CSCS="UCS2"'); } catch { /* ignore */ }
       // 重新设置 CNMI，确保恢复后短信通知不丢
       try { await this.send('AT+CNMI=2,1,0,0,0'); } catch { /* ignore */ }
     }

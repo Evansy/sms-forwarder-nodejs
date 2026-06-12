@@ -176,7 +176,8 @@ function finalizeContent(buf, ucs2) {
 
 /**
  * 检测是否为 URC（Unsolicited Result Code）
- * URC 是模块主动上报的事件，不是 AT 指令的响应
+ * URC 是模块主动上报的事件，不是 AT 指令的响应。
+ * 必须准确识别，否则 URC 会混入 AT 响应缓冲区，破坏 CMGR/CMGL 解析。
  * @param {string} line
  * @returns {boolean}
  */
@@ -185,6 +186,14 @@ export function isURC(line) {
     line.startsWith('+CMTI:') ||
     line === 'SMS READY' ||
     line === 'SMSFULL' ||
-    line.startsWith('+CIEV:')
+    line.startsWith('+CIEV:') ||
+    // Air724UG LTE 测量报告（约每 8 秒一组，必须过滤）
+    line.startsWith('+EEMLTESVC:') ||
+    line.startsWith('+EEMLTEINTRA:') ||
+    line.startsWith('+EEMLTEINTER:') ||
+    line.startsWith('+EEMGSMINTER:') ||
+    line.startsWith('+EEMGSMINTRA:') ||
+    line.startsWith('+EEMUMTSINTER:') ||
+    line.startsWith('+EEMUMTSINTRA:')
   );
 }
