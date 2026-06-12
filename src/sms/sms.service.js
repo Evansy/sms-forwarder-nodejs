@@ -11,7 +11,7 @@
 
 import modem from '../serial/modem.js';
 import { parseCMGR, parseCMGL, autoDecodeUCS2 } from '../serial/parser.js';
-import { buildSmsRecord } from './sms.parser.js';
+import { buildSmsRecord, normalizeTimestamp } from './sms.parser.js';
 import { extractOtp } from './otp.js';
 import { SmsAggregator } from './aggregator.js';
 import { generateHash, existsByHash, insertSms } from '../database/sqlite.js';
@@ -88,7 +88,7 @@ export async function handleDirectSms(data) {
   const sms = {
     phone,
     content,
-    timestamp: timestamp || new Date().toISOString(),
+    timestamp: normalizeTimestamp(timestamp),
   };
 
   // 复用现有的分流逻辑（OTP 立即推送 / 普通短信聚合）

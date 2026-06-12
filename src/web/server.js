@@ -2,7 +2,7 @@ import { resolve } from 'node:path';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import config from '../config/index.js';
-import logger from '../logger/index.js';
+import logger, { onLogEntry } from '../logger/index.js';
 import routes from './routes.js';
 
 /** @type {Set<import('ws').WebSocket>} */
@@ -33,6 +33,11 @@ export function startWebServer() {
     ws.on('close', () => {
       wsClients.delete(ws);
     });
+  });
+
+  // 日志推送到 Web 面板
+  onLogEntry((entry) => {
+    broadcast('log', entry);
   });
 
   return { app, wss };
