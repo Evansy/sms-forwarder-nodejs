@@ -153,6 +153,18 @@ export function getMessageById(id) {
   return db.prepare('SELECT * FROM sms_logs WHERE id = ?').get(id);
 }
 
+const stmtDeleteById = db.prepare('DELETE FROM sms_logs WHERE id = ?');
+
+/**
+ * 根据 ID 删除短信记录
+ * @param {number} id
+ * @returns {boolean} 是否删除成功
+ */
+export function deleteSmsById(id) {
+  const result = stmtDeleteById.run(id);
+  return result.changes > 0;
+}
+
 /**
  * 关闭数据库连接
  */
@@ -172,4 +184,4 @@ export function getDb() {
   return db;
 }
 
-export default { generateHash, existsByHash, insertSms, insertSentSms, queryMessages, getMessageById, closeDb, getDb };
+export default { generateHash, existsByHash, insertSms, insertSentSms, queryMessages, getMessageById, deleteSmsById, closeDb, getDb };

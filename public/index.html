@@ -185,19 +185,72 @@
     .tab-bar button.active { color: var(--accent); }
     .tab-bar button svg { width: 22px; height: 22px; }
 
-    /* ─── 消息列表 ─── */
+    /* ─── 消息列表（左滑删除） ─── */
+    .msg-swipe-wrap {
+      position: relative;
+      overflow: hidden;
+      border-radius: var(--radius);
+      margin-bottom: 10px;
+      animation: slideUp 0.3s ease-out both;
+    }
+
+    .msg-swipe-wrap.deleting {
+      animation: swipeOut 0.3s ease-in forwards;
+      overflow: visible;
+    }
+
+    @keyframes swipeOut {
+      to { opacity: 0; height: 0; margin-bottom: 0; transform: translateX(-100%); }
+    }
+
     .msg-card {
       background: var(--bg-card);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       padding: 14px 16px;
-      margin-bottom: 10px;
       box-shadow: var(--shadow-card);
-      transition: background 0.15s;
-      animation: slideUp 0.3s ease-out both;
+      position: relative;
+      z-index: 1;
+      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      will-change: transform;
+      touch-action: pan-y;
     }
 
+    .msg-card.swiping { transition: none; }
+
     .msg-card:active { background: var(--bg-card-hover); }
+
+    .msg-delete-zone {
+      position: absolute;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      width: 76px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--danger);
+      border-radius: 0 var(--radius) var(--radius) 0;
+    }
+
+    .msg-delete-zone button {
+      background: none;
+      border: none;
+      color: #fff;
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+      padding: 8px;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .msg-delete-zone button:active { opacity: 0.7; }
+    .msg-delete-zone svg { width: 18px; height: 18px; }
 
     @keyframes slideUp {
       from { opacity: 0; transform: translateY(12px); }
@@ -632,25 +685,40 @@
         </template>
 
         <template x-for="(m, i) in messages" :key="m.id">
-          <div class="msg-card" :style="`animation-delay: ${Math.min(i * 0.04, 0.3)}s`">
-            <div class="msg-head">
-              <span class="msg-phone" x-text="m.phone"></span>
-              <span class="msg-time" x-text="fmtTime(m.received_at || m.created_at)"></span>
+          <div class="msg-swipe-wrap"
+               :style="`animation-delay: ${Math.min(i * 0.04, 0.3)}s`"
+               :id="'msg-' + m.id"
+               @touchstart="swipeStart($event, m.id)"
+               @touchmove="swipeMove($event, m.id)"
+               @touchend="swipeEnd(m.id)">
+            <div class="msg-card"
+                 :class="{ 'swiping': _swipeActive && _swipeId === m.id }"
+                 :style="_swipeId === m.id ? `transform: translateX(${_swipeX}px)` : ''">
+              <div class="msg-head">
+                <span class="msg-phone" x-text="m.phone"></span>
+                <span class="msg-time" x-text="fmtTime(m.received_at || m.created_at)"></span>
+              </div>
+              <div class="msg-body" x-text="m.content"></div>
+              <div class="msg-footer" x-show="m.otp || m.forwarded !== undefined || m.direction">
+                <template x-if="m.direction === 'out'">
+                  <span class="fwd-badge out">发出</span>
+                </template>
+                <template x-if="m.otp">
+                  <span class="otp-badge" @click="copyText(m.otp)" title="点击复制">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+                    <span x-text="m.otp"></span>
+                  </span>
+                </template>
+                <template x-if="m.direction !== 'out' && m.forwarded !== undefined">
+                  <span class="fwd-badge" :class="m.forwarded ? 'ok' : 'fail'" x-text="m.forwarded ? '已转发' : '未转发'"></span>
+                </template>
+              </div>
             </div>
-            <div class="msg-body" x-text="m.content"></div>
-            <div class="msg-footer" x-show="m.otp || m.forwarded !== undefined || m.direction">
-              <template x-if="m.direction === 'out'">
-                <span class="fwd-badge out">发出</span>
-              </template>
-              <template x-if="m.otp">
-                <span class="otp-badge" @click="copyText(m.otp)" title="点击复制">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-                  <span x-text="m.otp"></span>
-                </span>
-              </template>
-              <template x-if="m.direction !== 'out' && m.forwarded !== undefined">
-                <span class="fwd-badge" :class="m.forwarded ? 'ok' : 'fail'" x-text="m.forwarded ? '已转发' : '未转发'"></span>
-              </template>
+            <div class="msg-delete-zone">
+              <button @click.stop="deleteMsg(m.id, i)">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                删除
+              </button>
             </div>
           </div>
         </template>
@@ -815,6 +883,14 @@
         logs: [],
         autoScroll: true,
 
+        // 左滑删除
+        _swipeId: null,
+        _swipeX: 0,
+        _swipeStartX: 0,
+        _swipeStartY: 0,
+        _swipeActive: false,
+        _swipeLocked: false,
+
         // WebSocket
         _ws: null,
         _wsRetry: 0,
@@ -833,6 +909,9 @@
           this.$watch('tab', (val) => {
             if (val === 'status') this.loadStatus();
           });
+
+          // 点击空白处关闭已滑开的卡片
+          document.addEventListener('click', () => this.closeSwipe());
 
           // 无限滚动：IntersectionObserver 监听 sentinel
           this.$nextTick(() => {
@@ -890,6 +969,85 @@
         loadMore() {
           this.page++;
           this.loadMessages();
+        },
+
+        // ─── 左滑删除 ───
+        swipeStart(e, id) {
+          // 已有其他卡片滑开，先关闭
+          if (this._swipeId !== null && this._swipeId !== id) {
+            this.closeSwipe();
+          }
+          this._swipeStartX = e.touches[0].clientX;
+          this._swipeStartY = e.touches[0].clientY;
+          this._swipeActive = false;
+          this._swipeLocked = false;
+        },
+
+        swipeMove(e, id) {
+          if (this._swipeLocked) return;
+
+          const dx = e.touches[0].clientX - this._swipeStartX;
+          const dy = e.touches[0].clientY - this._swipeStartY;
+
+          // 首次移动超过 8px 时判定方向
+          if (!this._swipeActive && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
+            if (Math.abs(dx) > Math.abs(dy)) {
+              this._swipeActive = true;
+              this._swipeId = id;
+            } else {
+              // 纵向滚动，锁定不再处理
+              this._swipeLocked = true;
+              return;
+            }
+          }
+
+          if (!this._swipeActive) return;
+          e.preventDefault();
+
+          // 只允许左滑（负值），带弹性阻力
+          const DELETE_W = 76;
+          const offset = Math.min(0, dx);
+          this._swipeX = offset < -DELETE_W
+            ? -DELETE_W + (offset + DELETE_W) * 0.15
+            : offset;
+        },
+
+        swipeEnd(id) {
+          if (!this._swipeActive) return;
+          this._swipeActive = false;
+
+          // 滑过一半宽度 → 停在删除位置；否则弹回
+          if (this._swipeX < -38) {
+            this._swipeX = -76;
+          } else {
+            this.closeSwipe();
+          }
+        },
+
+        closeSwipe() {
+          this._swipeX = 0;
+          this._swipeId = null;
+        },
+
+        async deleteMsg(id, index) {
+          try {
+            const res = await fetch(`/api/messages/${id}`, { method: 'DELETE' });
+            if (!res.ok) { this.showToast('删除失败'); return; }
+
+            // 播放滑出动画
+            const el = document.getElementById('msg-' + id);
+            if (el) {
+              el.classList.add('deleting');
+              await new Promise((r) => setTimeout(r, 300));
+            }
+
+            this.messages.splice(index, 1);
+            this.total--;
+            this.closeSwipe();
+            this.showToast('已删除');
+          } catch {
+            this.showToast('删除失败');
+          }
         },
 
         // ─── 发送短信 ───

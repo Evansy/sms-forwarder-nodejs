@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { queryMessages, getMessageById, insertSentSms } from '../database/sqlite.js';
+import { queryMessages, getMessageById, deleteSmsById, insertSentSms } from '../database/sqlite.js';
 import modem from '../serial/modem.js';
 import config from '../config/index.js';
 import logger from '../logger/index.js';
@@ -38,6 +38,26 @@ router.get('/api/messages/:id', (req, res) => {
   } catch (err) {
     logger.error({ err }, 'API: 查询消息详情失败');
     res.status(500).json({ error: '查询失败' });
+  }
+});
+
+/**
+ * 删除短信记录
+ * DELETE /api/messages/:id
+ */
+router.delete('/api/messages/:id', (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (isNaN(id)) return res.status(400).json({ error: 'ID 无效' });
+
+    const deleted = deleteSmsById(id);
+    if (!deleted) return res.status(404).json({ error: '消息不存在' });
+
+    logger.info({ id }, 'Web: 删除短信记录');
+    res.json({ success: true });
+  } catch (err) {
+    logger.error({ err }, 'API: 删除消息失败');
+    res.status(500).json({ error: '删除失败' });
   }
 });
 
