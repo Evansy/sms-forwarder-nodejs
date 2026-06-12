@@ -97,8 +97,16 @@ async function processBatch(indices) {
       await routeSms(sms, index, lines);
     } catch (err) {
       if (err.message?.includes('321')) {
-        logger.debug({ index }, '短信索引不存在 (321)，将尝试 CMGL 兜底');
+        logger.info({ index }, '短信索引不存在 (321)，将尝试 CMGL 兜底');
         failedCount++;
+        // 首次失败时输出诊断信息
+        if (failedCount === 1) {
+          try {
+            const cscsInfo = await modem.send('AT+CSCS?');
+            const cpmsInfo = await modem.send('AT+CPMS?');
+            logger.info({ cscs: cscsInfo.join(' '), cpms: cpmsInfo.join(' ') }, '321 诊断: 当前模块状态');
+          } catch { /* ignore */ }
+        }
       } else {
         logger.error({ err, index }, '读取短信失败');
       }
@@ -117,18 +125,35 @@ async function processBatch(indices) {
 /**
  * AT+CMGL 兜底扫描：读取所有未读短信
  * 用于 AT+CMGR 索引失效时的可靠回退
+ *
+ * 使用数字状态码（0=未读, 4=全部）替代字符串("REC UNREAD")，
+ * 避免 CSCS="UCS2" 时字符串参数可能被 hex 编码处理的兼容性问题。
  */
 async function fallbackScanUnread() {
   try {
-    const lines = await modem.send('AT+CMGL="REC UNREAD"');
-    const messages = parseCMGL(lines);
+    // 先查询 CPMS 状态辅助诊断
+    try {
+      const cpmsLines = await modem.send('AT+CPMS?');
+      logger.info({ cpms: cpmsLines.join(' ') }, 'CMGL 兜底: 当前存储区');
+    } catch { /* ignore */ }
+
+    // 数字 0 = "REC UNREAD"
+    let lines = await modem.send('AT+CMGL=0');
+    let messages = parseCMGL(lines);
 
     if (messages.length === 0) {
-      logger.debug('CMGL 兜底扫描：无未读短信');
+      // 如果未读为空，尝试读取所有（数字 4 = "ALL"）
+      logger.info('CMGL 兜底: 未读为空，尝试读取全部短信');
+      lines = await modem.send('AT+CMGL=4');
+      messages = parseCMGL(lines);
+    }
+
+    if (messages.length === 0) {
+      logger.info('CMGL 兜底: SIM 卡中无短信');
       return;
     }
 
-    logger.info({ count: messages.length }, 'CMGL 兜底扫描发现未读短信');
+    logger.info({ count: messages.length }, 'CMGL 兜底扫描发现短信');
 
     for (const msg of messages) {
       const sms = buildSmsRecord(msg);
@@ -234,7 +259,8 @@ export async function scanUnread() {
   try {
     logger.info('开始扫描未读短信...');
 
-    const lines = await modem.send('AT+CMGL="REC UNREAD"');
+    // 使用数字状态码 0="REC UNREAD"，避免 CSCS="UCS2" 影响字符串参数
+    const lines = await modem.send('AT+CMGL=0');
     const messages = parseCMGL(lines);
 
     if (messages.length === 0) {
