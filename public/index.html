@@ -1203,7 +1203,9 @@
               return `<span class="lvl-${lvl.toLowerCase()}">[${lvl}]</span>`;
             });
           }
-          const lvl = (l.level || 'info').toLowerCase();
+          // pino level 是数字: 10=trace 20=debug 30=info 40=warn 50=error 60=fatal
+          const LEVELS = { 10: 'debug', 20: 'debug', 30: 'info', 40: 'warn', 50: 'error', 60: 'error' };
+          const lvl = typeof l.level === 'number' ? (LEVELS[l.level] || 'info') : String(l.level || 'info').toLowerCase();
           const ts = l.time ? new Date(l.time).toLocaleTimeString() : '';
           const msg = l.msg || JSON.stringify(l);
           return `<span class="ts">${ts}</span> <span class="lvl-${lvl}">[${lvl.toUpperCase()}]</span> ${this.escapeHtml(msg)}`;
