@@ -27,11 +27,16 @@ const notifier = notifierModule.default;
 
 // +CMTI 批量读取延迟：等模块完成短信写入
 const BATCH_DELAY_MS = 500;
+// 单条读取前额外等待，给 SIM 卡写入充裕时间
+const READ_DELAY_MS = 300;
 
 /** @type {number[]} */
 let pendingIndices = [];
 /** @type {NodeJS.Timeout|null} */
 let batchTimer = null;
+// 防止同一索引被并发处理（CMTI 可能重复触发）
+/** @type {Set<number>} */
+const processingIndexes = new Set();
 
 // 普通短信聚合器（5 秒窗口）
 const aggregator = new SmsAggregator(5000);
@@ -40,10 +45,16 @@ const aggregator = new SmsAggregator(5000);
  * 将新短信索引加入批处理队列
  *
  * 延迟 500ms 后批量读取，确保模块完成短信写入。
+ * 自动去重：同一索引不会被重复处理。
  *
  * @param {number} index - SIM 卡中的短信索引
  */
 export function queueNewSms(index) {
+  // 跳过正在处理或已在队列中的索引
+  if (processingIndexes.has(index) || pendingIndices.includes(index)) {
+    logger.debug({ index }, '索引已在处理队列中，跳过');
+    return;
+  }
   pendingIndices.push(index);
 
   if (batchTimer) clearTimeout(batchTimer);
@@ -61,7 +72,11 @@ export function queueNewSms(index) {
  */
 async function processBatch(indices) {
   for (const index of indices) {
+    processingIndexes.add(index);
     try {
+      // 额外延迟，给 SIM 卡写入充裕时间（Air724UG 偶发写入延迟）
+      await sleep(READ_DELAY_MS);
+
       const lines = await modem.send(`AT+CMGR=${index}`);
       const parsed = parseCMGR(lines);
 
@@ -73,10 +88,20 @@ async function processBatch(indices) {
       const sms = buildSmsRecord(parsed);
       await routeSms(sms, index, lines);
     } catch (err) {
-      logger.error({ err, index }, '读取短信失败');
+      // CMS ERROR 321 = 索引不存在（已删除或尚未写入完成），降级处理
+      if (err.message?.includes('321')) {
+        logger.debug({ index }, '短信索引不存在，跳过 (321)');
+      } else {
+        logger.error({ err, index }, '读取短信失败');
+      }
+    } finally {
+      processingIndexes.delete(index);
     }
   }
 }
+
+/** @param {number} ms */
+function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
 /**
  * 分流：验证码立即推送，普通短信进入聚合器
