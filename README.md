@@ -20,24 +20,43 @@ Bark / 飞书
 
 ## 功能
 
+**短信收发**
+
 - 实时接收短信并推送通知（Bark / 飞书）
+- **+CMT 直接投递模式**（`AT+CNMI=2,2`），绕过 SIM 卡存储限制，收到即处理
+- 兼容 +CMTI 传统模式作为回退
 - 自动提取 4~8 位验证码（支持中英文关键词识别）
 - Bark 推送验证码时自动复制到剪贴板，设为时效性通知穿透勿扰模式
+- Bark 通知格式优化：OTP 短信内容在前，手机号在后，避免 iOS 键盘误识别
 - 启动时扫描未读短信并补推（不漏消息）
 - 短信去重（phone + content + timestamp hash）
-- SQLite 日志记录
+- 短信聚合器：自动合并长短信分片
+- 在线发送短信（支持中文，自动选择 PDU/文本模式）
+- AT 模块时间戳自动转换（3GPP 季度小时时区 → ISO 格式）
+
+**稳定性**
+
 - 串口断开自动重连（指数退避）
 - CNMI 定时刷新（防止模块重置通知配置）
+- LTE 测量报告 URC 自动过滤（`+EEMLTESVC:` 等噪声不干扰指令响应）
 - SIM 存储满自动清理
 - 优雅退出（SIGINT/SIGTERM）
 - 支持 PM2 / systemd 部署
-- **Web 管理面板**（默认端口 3000）
-  - 历史短信列表，支持号码搜索、无限滚动
-  - 在线发送短信
-  - 模块实时状态（信号、SIM、存储、运行时间）
-  - 实时日志流（WebSocket 推送）
-  - 浅色/深色主题切换，iPhone 完美适配
-  - 无需鉴权（内网使用场景）
+
+**Web 管理面板**（默认端口 3000，零外部依赖）
+
+- 历史短信列表，号码搜索，无限滚动
+- 消息方向标识（收到 / 发出）
+- **筛选条件**：全部 / 已转发 / 未转发 / 验证码 / 已发送
+- **左滑删除**：iOS 风格左滑露出删除按钮，带弹性阻力和滑出动画
+- OTP 一键复制（Clipboard API + execCommand 双重兼容）
+- 在线发送短信（实时字数/条数统计）
+- 模块实时状态（信号、SIM、存储、运行时间）
+- 实时日志流（WebSocket 推送，pino 主线程多流输出）
+- 浅色/深色主题切换，iPhone 完美适配
+- Alpine.js 本地化 + 系统字体栈，完全离线可用
+- 无需鉴权（内网使用场景）
+- SQLite 持久化存储
 
 ## 前置条件
 
@@ -184,7 +203,7 @@ node src/app.js
 [INFO] AT 通信正常
 [INFO] 已设置文本模式 (AT+CMGF=1)
 [INFO] 已关闭 RNDIS 网卡 (AT+RNDISCALL=0,0)
-[INFO] 已开启短信通知 (AT+CNMI=2,1,0,0,0)
+[INFO] 已开启短信直接投递 (AT+CNMI=2,2,0,0,0)
 [INFO] 已设置短信存储区 (SM)
 [INFO] 信号强度 csq="+CSQ: 20,99"
 [INFO] SIM 卡状态 cpin="+CPIN: READY"
@@ -195,11 +214,11 @@ node src/app.js
 
 Web 面板可通过浏览器访问 `http://<N1-IP>:3000`。
 
-此时给 giffgaff SIM 卡发一条短信，应该能看到：
+此时给 SIM 卡发一条短信，应该能看到：
 
 ```
-[INFO] 收到新短信通知 index=0
-[INFO] 处理新短信 phone="+44xxx" otp="123456"
+[INFO] 收到 +CMT 直接投递短信 phone="+86xxx"
+[INFO] 处理新短信 phone="+86xxx" otp="123456"
 [INFO] Bark 通知发送成功
 ```
 
@@ -332,25 +351,29 @@ sms-forwarder/
 │   ├── config/
 │   │   └── index.js          # 配置加载与校验
 │   ├── serial/
-│   │   ├── modem.js           # 串口通信、AT 指令队列、自动重连
-│   │   └── parser.js          # AT 响应解析（+CMTI/+CMGR/+CMGL）
+│   │   ├── modem.js           # 串口通信、AT 指令队列、自动重连、+CMT 事件
+│   │   └── parser.js          # AT 响应解析（+CMT/+CMTI/+CMGR/+CMGL/URC 过滤）
 │   ├── sms/
-│   │   ├── sms.service.js     # 短信处理编排（核心）
-│   │   ├── sms.parser.js      # 短信内容解析
+│   │   ├── sms.service.js     # 短信处理编排（收发、去重、转发、删除）
+│   │   ├── sms.parser.js      # 短信内容解析 + AT 时间戳归一化
+│   │   ├── sms.aggregator.js  # 长短信分片聚合
 │   │   └── otp.js             # OTP 验证码提取
 │   ├── notifier/
-│   │   ├── bark.js            # Bark 通知（默认）
+│   │   ├── bark.js            # Bark 通知（默认，iOS 键盘友好格式）
 │   │   └── feishu.js          # 飞书通知
 │   ├── database/
-│   │   └── sqlite.js          # SQLite 操作（含分页查询）
+│   │   └── sqlite.js          # SQLite 操作（分页查询、删除）
 │   ├── web/
-│   │   ├── server.js           # Express + WebSocket 服务
+│   │   ├── server.js           # Express + WebSocket 服务 + 日志广播
 │   │   └── routes.js           # REST API 路由
 │   ├── logger/
-│   │   └── index.js           # pino 日志
+│   │   └── index.js           # pino 日志（multistream + WebSocket 推送）
 │   └── app.js                 # 主入口
 ├── public/
-│   └── index.html             # Web 面板单文件 SPA（Alpine.js）
+│   ├── index.html             # Web 面板单文件 SPA（Alpine.js）
+│   └── alpine.min.js          # Alpine.js v3.14.9（本地化）
+├── scripts/
+│   └── at-diag.js             # AT 指令诊断脚本
 ├── data/                      # SQLite 数据库（自动创建）
 ├── logs/                      # 日志文件（自动创建）
 ├── sms-forwarder.service      # systemd service 文件
@@ -362,8 +385,28 @@ sms-forwarder/
 
 ## 工作流程
 
+### 主路径：+CMT 直接投递（推荐，默认）
+
 ```
-+CMTI 新短信通知
+短信到达 SIM 卡
+    ↓
++CMT URC 直接投递内容（不存 SIM）
+    ↓
+UCS2 / GSM 解码
+    ↓
+解析内容 + 提取验证码
+    ↓
+SHA256 去重检查
+    ↓
+Bark/飞书 推送通知
+    ↓
+SQLite 记录日志
+```
+
+### 回退路径：+CMTI 存储通知
+
+```
++CMTI 新短信通知（SIM 存储）
     ↓
 AT+CMGR 读取短信
     ↓
@@ -375,10 +418,12 @@ Bark/飞书 推送通知
     ↓
 SQLite 记录日志
     ↓
-AT+CMGD 删除短信
+AT+CMGD 删除短信（释放 SIM 空间）
 ```
 
 启动时额外执行 `AT+CMGL="REC UNREAD"` 扫描所有未读短信并补推，确保服务停机期间收到的短信不会遗漏。
+
+> **注意：** 部分 4G 模块（如 Air724UG 搭配某些运营商 SIM 卡）可能无法正常写入 SIM 卡存储。+CMT 模式完全绕过此限制，是更可靠的方案。
 
 ---
 
@@ -390,22 +435,23 @@ AT+CMGD 删除短信
 
 | Tab | 功能 |
 |---|---|
-| 消息 | 历史短信列表，号码搜索，OTP 一键复制 |
-| 发送 | 在线发送短信（UCS2 编码，支持中文） |
+| 消息 | 短信列表 + 号码搜索 + 筛选（全部/已转发/未转发/验证码/已发送）+ 左滑删除 + OTP 复制 |
+| 发送 | 在线发送短信（自动选择编码，实时字数统计） |
 | 状态 | 信号强度、SIM 状态、存储用量、运行时间 |
-| 日志 | WebSocket 实时日志流 |
+| 日志 | WebSocket 实时日志流（pino 主线程推送） |
 
 **API 端点：**
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/messages?page=1&pageSize=20&phone=xxx` | 分页查询消息 |
+| GET | `/api/messages?page=1&pageSize=20&phone=xxx&filter=otp` | 分页查询消息（filter: forwarded / not_forwarded / otp / sent） |
 | GET | `/api/messages/:id` | 消息详情 |
+| DELETE | `/api/messages/:id` | 删除消息记录 |
 | POST | `/api/sms/send` | 发送短信（body: `{ phone, content }`） |
 | GET | `/api/status` | 模块状态 |
 | GET | `/api/config` | 当前配置（脱敏） |
 
-WebSocket 连接 `ws://<N1-IP>:3000/ws`，接收新短信和日志推送。
+WebSocket 连接 `ws://<N1-IP>:3000/ws`，实时推送新短信（type: `sms`）和日志（type: `log`）。
 
 > 面板无鉴权，仅供内网使用。如需外网访问请配合反向代理 + 认证。
 
@@ -440,9 +486,10 @@ AT          # 应返回 OK
 AT+CPIN?    # 应返回 +CPIN: READY
 AT+CSQ      # 信号强度，第一个数字 10+ 为正常
 AT+CMGF=1   # 设置文本模式
-AT+CNMI=2,1,0,0,0  # 开启通知
+AT+CNMI=2,2,0,0,0  # 开启直接投递
 
-# 此时发短信，screen 中应出现 +CMTI: "SM",0
+# 此时发短信，screen 中应出现 +CMT: "号码","时间" 后跟短信内容
+# 如果 +CMT 不工作，改用 AT+CNMI=2,1,0,0,0（CMTI 回退模式，需 SIM 卡支持存储）
 ```
 
 ### 短信存储满
