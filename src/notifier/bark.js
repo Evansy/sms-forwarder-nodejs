@@ -15,11 +15,13 @@ function formatMessage(message) {
 
   const title = otp
     ? `验证码: ${otp}`
-    : '收到短信';
+    : `收到短信 · ${phone}`;
 
+  // OTP 消息：短信原文在前（iOS 键盘从中提取验证码），手机号在末尾
+  // 避免 11 位手机号出现在 body 开头被 iOS 键盘误识别为验证码
   const body = otp
-    ? `号码: ${phone}\n验证码: ${otp}\n\n${content}`
-    : `号码: ${phone}\n\n${content}`;
+    ? `${content}\n\n来自: ${phone}`
+    : content;
 
   return { title, body };
 }
