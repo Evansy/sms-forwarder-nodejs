@@ -16,7 +16,7 @@ import config, { validateConfig } from './config/index.js';
 import logger from './logger/index.js';
 import { closeDb } from './database/sqlite.js';
 import modem from './serial/modem.js';
-import { handleNewSms, scanUnread, handleStorageFull } from './sms/sms.service.js';
+import { queueNewSms, scanUnread, handleStorageFull } from './sms/sms.service.js';
 import { startWebServer } from './web/server.js';
 
 /** @type {NodeJS.Timeout|null} */
@@ -80,9 +80,9 @@ async function initModem() {
  * 注册事件监听
  */
 function setupEventHandlers() {
-  // 新短信通知
+  // 新短信通知（加入批处理队列，等待长短信片段到齐后合并处理）
   modem.on('cmti', (index) => {
-    handleNewSms(index);
+    queueNewSms(index);
   });
 
   // 存储满自愈

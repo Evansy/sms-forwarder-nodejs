@@ -100,42 +100,46 @@ export function insertSentSms({ phone, content }) {
 
 // ─── Web 面板查询 ────────────────────────────────────────
 
-const stmtQueryMessages = db.prepare(`
-  SELECT id, phone, content, otp, received_at, forwarded, direction, created_at
-  FROM sms_logs
-  ORDER BY created_at DESC
-  LIMIT @limit OFFSET @offset
-`);
-
-const stmtQueryByPhone = db.prepare(`
-  SELECT id, phone, content, otp, received_at, forwarded, direction, created_at
-  FROM sms_logs
-  WHERE phone LIKE @phone
-  ORDER BY created_at DESC
-  LIMIT @limit OFFSET @offset
-`);
-
-const stmtCountAll = db.prepare(`SELECT COUNT(*) as total FROM sms_logs`);
-const stmtCountByPhone = db.prepare(`SELECT COUNT(*) as total FROM sms_logs WHERE phone LIKE @phone`);
+// 支持的过滤条件 → SQL WHERE 片段
+const FILTER_MAP = {
+  forwarded: "forwarded = 1 AND direction = 'in'",
+  not_forwarded: "forwarded = 0 AND direction = 'in'",
+  otp: "otp IS NOT NULL AND otp != ''",
+  sent: "direction = 'out'",
+};
 
 /**
  * 分页查询消息记录
- * @param {{ page?: number, pageSize?: number, phone?: string }} opts
+ *
+ * @param {{ page?: number, pageSize?: number, phone?: string, filter?: string }} opts
+ * @param {string} [opts.filter] - all | forwarded | not_forwarded | otp | sent
  * @returns {{ messages: object[], total: number, page: number, pageSize: number }}
  */
-export function queryMessages({ page = 1, pageSize = 20, phone } = {}) {
+export function queryMessages({ page = 1, pageSize = 20, phone, filter } = {}) {
   const offset = (page - 1) * pageSize;
-  const params = { limit: pageSize, offset };
+  const conditions = [];
+  const params = {};
 
-  let messages, total;
   if (phone) {
-    const phoneLike = `%${phone}%`;
-    messages = stmtQueryByPhone.all({ ...params, phone: phoneLike });
-    total = stmtCountByPhone.get({ phone: phoneLike }).total;
-  } else {
-    messages = stmtQueryMessages.all(params);
-    total = stmtCountAll.get().total;
+    conditions.push('phone LIKE @phone');
+    params.phone = `%${phone}%`;
   }
+
+  if (filter && FILTER_MAP[filter]) {
+    conditions.push(FILTER_MAP[filter]);
+  }
+
+  const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+  const messages = db.prepare(`
+    SELECT id, phone, content, otp, received_at, forwarded, direction, created_at
+    FROM sms_logs ${where}
+    ORDER BY created_at DESC
+    LIMIT @limit OFFSET @offset
+  `).all({ ...params, limit: pageSize, offset });
+
+  const countStmt = db.prepare(`SELECT COUNT(*) as total FROM sms_logs ${where}`);
+  const { total } = Object.keys(params).length > 0 ? countStmt.get(params) : countStmt.get();
 
   return { messages, total, page, pageSize };
 }
@@ -161,4 +165,11 @@ export function closeDb() {
   }
 }
 
-export default { generateHash, existsByHash, insertSms, insertSentSms, queryMessages, getMessageById, closeDb };
+/**
+ * 获取原始数据库实例（仅供清理脚本等特殊用途）
+ */
+export function getDb() {
+  return db;
+}
+
+export default { generateHash, existsByHash, insertSms, insertSentSms, queryMessages, getMessageById, closeDb, getDb };

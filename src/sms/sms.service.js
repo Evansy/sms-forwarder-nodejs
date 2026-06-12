@@ -1,27 +1,23 @@
 /**
  * 短信服务 - 核心编排层
  * 串联 modem、解析、去重、通知、数据库
+ *
+ * 长短信处理策略：
+ * 1. +CMTI 缓冲 500ms 后批量读取（避免模块写入未完成时读取）
+ * 2. 含 OTP 的验证码短信 → 立即推送（零延迟）
+ * 3. 普通短信 → 进入聚合器，同号码 5 秒内无新消息后合并推送
+ * 4. 合并后重新提取 OTP（关键词和数字可能分在不同片段）
  */
 
 import modem from '../serial/modem.js';
 import { parseCMGR, parseCMGL } from '../serial/parser.js';
 import { buildSmsRecord } from './sms.parser.js';
+import { extractOtp } from './otp.js';
+import { SmsAggregator } from './aggregator.js';
 import { generateHash, existsByHash, insertSms } from '../database/sqlite.js';
 import config from '../config/index.js';
 import logger from '../logger/index.js';
 import { broadcast } from '../web/server.js';
-
-/**
- * 检测内容是否为运营商长短信拆分产生的片段
- * 文本模式下超长短信被拆成多条，尾部常含 URL 参数残片等无意义内容
- * 片段特征：短（<20字符）、无中文、无验证码关键词
- */
-function isFragment(content) {
-  if (!content || content.length >= 20) return false;
-  if (/[\u4e00-\u9fff]/.test(content)) return false;
-  if (/验证码|校验码|动态码|code|otp|pin/i.test(content)) return false;
-  return true;
-}
 
 // 根据配置动态加载通知渠道
 const notifierModule = config.notifier === 'bark'
@@ -29,76 +25,146 @@ const notifierModule = config.notifier === 'bark'
   : await import('../notifier/feishu.js');
 const notifier = notifierModule.default;
 
+// +CMTI 批量读取延迟：等模块完成短信写入
+const BATCH_DELAY_MS = 500;
+
+/** @type {number[]} */
+let pendingIndices = [];
+/** @type {NodeJS.Timeout|null} */
+let batchTimer = null;
+
+// 普通短信聚合器（5 秒窗口）
+const aggregator = new SmsAggregator(5000);
+
 /**
- * 处理单条新短信（由 +CMTI 触发）
+ * 将新短信索引加入批处理队列
+ *
+ * 延迟 500ms 后批量读取，确保模块完成短信写入。
+ *
  * @param {number} index - SIM 卡中的短信索引
  */
-export async function handleNewSms(index) {
-  try {
-    // 1. 读取短信
-    const lines = await modem.send(`AT+CMGR=${index}`);
-    const parsed = parseCMGR(lines);
+export function queueNewSms(index) {
+  pendingIndices.push(index);
 
-    if (!parsed || !parsed.content) {
-      logger.warn({ index, lines }, '短信解析失败或内容为空');
-      return;
+  if (batchTimer) clearTimeout(batchTimer);
+
+  batchTimer = setTimeout(async () => {
+    const indices = pendingIndices.splice(0);
+    batchTimer = null;
+    await processBatch(indices);
+  }, BATCH_DELAY_MS);
+}
+
+/**
+ * 批量读取短信并分流处理
+ * @param {number[]} indices
+ */
+async function processBatch(indices) {
+  for (const index of indices) {
+    try {
+      const lines = await modem.send(`AT+CMGR=${index}`);
+      const parsed = parseCMGR(lines);
+
+      if (!parsed || !parsed.content) {
+        logger.warn({ index, lines }, '短信解析失败或内容为空');
+        continue;
+      }
+
+      const sms = buildSmsRecord(parsed);
+      await routeSms(sms, index, lines);
+    } catch (err) {
+      logger.error({ err, index }, '读取短信失败');
     }
-
-    // 2. 构建短信记录
-    const sms = buildSmsRecord(parsed);
-
-    // 3. 去重检查
-    const hash = generateHash(sms.phone, sms.content, sms.timestamp);
-    if (existsByHash(hash)) {
-      logger.info({ phone: sms.phone, hash }, '重复短信，跳过');
-      await deleteSms(index);
-      return;
-    }
-
-    logger.info({ phone: sms.phone, otp: sms.otp }, '处理新短信');
-
-    // 4. 推送通知（长短信片段不推送，仅入库）
-    let forwarded = false;
-    if (isFragment(sms.content)) {
-      logger.info({ phone: sms.phone, content: sms.content }, '检测到长短信片段，跳过推送');
-    } else {
-      forwarded = await notifier.send({
-        phone: sms.phone,
-        content: sms.content,
-        otp: sms.otp,
-      });
-    }
-
-    // 5. 入库
-    insertSms({
-      hash,
-      smsIndex: index,
-      phone: sms.phone,
-      content: sms.content,
-      otp: sms.otp,
-      receivedAt: sms.timestamp,
-      forwarded: forwarded ? 1 : 0,
-      raw: lines.join('\n'),
-    });
-
-    // 6. WebSocket 实时推送到 Web 面板
-    broadcast('sms', {
-      phone: sms.phone,
-      content: sms.content,
-      otp: sms.otp,
-      timestamp: sms.timestamp,
-      forwarded,
-    });
-
-    // 7. 删除 SIM 卡上的短信
-    await deleteSms(index);
-  } catch (err) {
-    logger.error({ err, index }, '处理短信失败');
   }
 }
 
 /**
+ * 分流：验证码立即推送，普通短信进入聚合器
+ */
+async function routeSms(sms, index, rawLines) {
+  const { otp } = extractOtp(sms.content);
+
+  if (otp) {
+    // 验证码短信立即推送，不等待
+    logger.info({ phone: sms.phone, otp }, '检测到验证码，立即推送');
+    await pushAndSave({
+      phone: sms.phone,
+      content: sms.content,
+      otp,
+      timestamp: sms.timestamp,
+      indices: [index],
+      rawParts: [rawLines.join('\n')],
+    });
+    return;
+  }
+
+  // 普通短信进入聚合器（同号码 5 秒无新消息后合并推送）
+  aggregator.add(
+    { phone: sms.phone, content: sms.content, timestamp: sms.timestamp, index, rawLines },
+    async (merged) => {
+      // 合并后重新提取 OTP（关键词和数字可能分在不同片段）
+      const { otp: mergedOtp } = extractOtp(merged.content);
+      await pushAndSave({
+        phone: merged.phone,
+        content: merged.content,
+        otp: mergedOtp,
+        timestamp: merged.timestamp,
+        indices: merged.indices,
+        rawParts: merged.rawParts,
+      });
+    }
+  );
+}
+
+/**
+ * 通用的推送 + 入库 + 广播 + 删除流程
+ *
+ * @param {object} params
+ * @param {string} params.phone
+ * @param {string} params.content
+ * @param {string|null} params.otp
+ * @param {string} params.timestamp
+ * @param {number[]} params.indices
+ * @param {string[]} params.rawParts
+ */
+async function pushAndSave({ phone, content, otp, timestamp, indices, rawParts }) {
+  // 去重
+  const hash = generateHash(phone, content, timestamp);
+  if (existsByHash(hash)) {
+    logger.info({ phone, hash }, '重复短信，跳过');
+    for (const idx of indices) await deleteSms(idx);
+    return;
+  }
+
+  logger.info({ phone, otp }, '处理新短信');
+
+  // 推送通知
+  const forwarded = await notifier.send({ phone, content, otp });
+
+  // 入库
+  insertSms({
+    hash,
+    smsIndex: indices[0],
+    phone,
+    content,
+    otp,
+    receivedAt: timestamp,
+    forwarded: forwarded ? 1 : 0,
+    raw: rawParts.join('\n---PART---\n'),
+  });
+
+  // WebSocket 推送到 Web 面板
+  broadcast('sms', { phone, content, otp, timestamp, forwarded });
+
+  // 删除 SIM 上的短信
+  for (const idx of indices) await deleteSms(idx);
+}
+
+/**
  * 启动时扫描并处理所有未读短信
+ *
+ * 启动扫描使用同步分组（按号码 + 时间戳），因为所有消息一次性获取，
+ * 不需要等待聚合窗口。
  */
 export async function scanUnread() {
   try {
@@ -114,41 +180,21 @@ export async function scanUnread() {
 
     logger.info({ count: messages.length }, '发现未读短信');
 
-    for (const msg of messages) {
-      const sms = buildSmsRecord(msg);
-      const hash = generateHash(sms.phone, sms.content, sms.timestamp);
+    // 构建记录
+    const items = messages.map((msg) => ({
+      sms: buildSmsRecord(msg),
+      index: msg.index,
+      rawLines: [JSON.stringify(msg)],
+    }));
 
-      if (existsByHash(hash)) {
-        logger.info({ phone: sms.phone, hash }, '重复短信，跳过');
-        await deleteSms(msg.index);
-        continue;
+    // 按号码分组 → 按时间戳子分组 → 合并处理
+    const phoneGroups = groupByPhone(items);
+
+    for (const samePhoneItems of phoneGroups.values()) {
+      const mergeGroups = subGroupByTimestamp(samePhoneItems);
+      for (const group of mergeGroups) {
+        await processScanGroup(group);
       }
-
-      logger.info({ phone: sms.phone, otp: sms.otp, index: msg.index }, '补推未读短信');
-
-      let forwarded = false;
-      if (isFragment(sms.content)) {
-        logger.info({ phone: sms.phone, content: sms.content }, '检测到长短信片段，跳过推送');
-      } else {
-        forwarded = await notifier.send({
-          phone: sms.phone,
-          content: sms.content,
-          otp: sms.otp,
-        });
-      }
-
-      insertSms({
-        hash,
-        smsIndex: msg.index,
-        phone: sms.phone,
-        content: sms.content,
-        otp: sms.otp,
-        receivedAt: sms.timestamp,
-        forwarded: forwarded ? 1 : 0,
-        raw: JSON.stringify(msg),
-      });
-
-      await deleteSms(msg.index);
     }
 
     logger.info({ count: messages.length }, '未读短信扫描完成');
@@ -156,6 +202,94 @@ export async function scanUnread() {
     logger.error({ err }, '扫描未读短信失败');
   }
 }
+
+// ─── scanUnread 辅助函数 ────────────────────────────────────
+
+// 同号码短信 SMSC 时间戳差距 ≤10 秒视为同一条长短信的片段
+const MERGE_WINDOW_MS = 10_000;
+
+/**
+ * 解析 AT 响应中的 SMSC 时间戳为毫秒数
+ * @param {string} ts
+ * @returns {number} 解析失败返回 0
+ */
+function parseTimestampMs(ts) {
+  if (!ts) return 0;
+  const match = ts.match(/(\d{2,4})\D(\d{2})\D(\d{2}),(\d{2}):(\d{2}):(\d{2})/);
+  if (!match) return 0;
+  let [, year, month, day, hour, min, sec] = match.map(Number);
+  if (year < 100) year += 2000;
+  return new Date(year, month - 1, day, hour, min, sec).getTime();
+}
+
+function groupByPhone(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = item.sms.phone;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return groups;
+}
+
+/**
+ * 同号码内按 SMSC 时间戳分组
+ * 时间戳差距 ≤ MERGE_WINDOW_MS 的归为一组（长短信片段）
+ */
+function subGroupByTimestamp(items) {
+  if (items.length <= 1) return [items];
+
+  items.sort((a, b) => a.index - b.index);
+
+  const groups = [];
+  let currentGroup = [items[0]];
+
+  for (let i = 1; i < items.length; i++) {
+    const baseTs = parseTimestampMs(currentGroup[0].sms.timestamp);
+    const currTs = parseTimestampMs(items[i].sms.timestamp);
+
+    if (baseTs > 0 && currTs > 0 && Math.abs(currTs - baseTs) <= MERGE_WINDOW_MS) {
+      currentGroup.push(items[i]);
+    } else {
+      groups.push(currentGroup);
+      currentGroup = [items[i]];
+    }
+  }
+
+  groups.push(currentGroup);
+  return groups;
+}
+
+/**
+ * 处理扫描到的一组短信（可能是合并后的）
+ */
+async function processScanGroup(items) {
+  items.sort((a, b) => a.index - b.index);
+
+  const phone = items[0].sms.phone;
+  const timestamp = items[0].sms.timestamp;
+  const mergedContent = items.map((i) => i.sms.content).join('');
+  const { otp } = extractOtp(mergedContent);
+  const indices = items.map((i) => i.index);
+
+  if (items.length > 1) {
+    logger.info(
+      { phone, parts: items.length, mergedLength: mergedContent.length },
+      '未读长短信已合并'
+    );
+  }
+
+  await pushAndSave({
+    phone,
+    content: mergedContent,
+    otp,
+    timestamp,
+    indices,
+    rawParts: items.map((i) => i.rawLines.join('\n')),
+  });
+}
+
+// ─── 公共工具 ──────────────────────────────────────────────
 
 /**
  * 删除 SIM 卡上的短信

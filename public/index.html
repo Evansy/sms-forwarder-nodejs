@@ -270,14 +270,46 @@
     [data-theme="dark"] .fwd-badge.ok { border-color: rgba(62, 207, 142, 0.3); }
     [data-theme="dark"] .fwd-badge.fail { border-color: rgba(245, 101, 101, 0.3); }
 
-    /* ─── 搜索栏 ─── */
+    /* ─── 搜索栏 + 过滤条件 ─── */
     .search-bar {
       position: sticky;
       top: 0;
       z-index: 10;
-      padding: 8px 0 12px;
+      padding: 8px 0 4px;
       background: var(--bg-deep);
     }
+
+    .filter-bar {
+      display: flex;
+      gap: 6px;
+      padding: 4px 0 10px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .filter-bar::-webkit-scrollbar { display: none; }
+
+    .filter-chip {
+      flex-shrink: 0;
+      padding: 5px 12px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: var(--bg-card);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .filter-chip:active { transform: scale(0.95); }
+    .filter-chip.active {
+      background: var(--accent);
+      color: #fff;
+      border-color: var(--accent);
+    }
+    [data-theme="dark"] .filter-chip.active { color: var(--bg-deep); }
 
     .search-input {
       width: 100%;
@@ -583,6 +615,13 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="M21 21L16.65 16.65"/></svg>
             <input class="search-input" type="tel" placeholder="搜索号码…" x-model.debounce.400ms="searchPhone" @input="loadMessages(true)">
           </div>
+          <div class="filter-bar">
+            <button class="filter-chip" :class="msgFilter === '' && 'active'" @click="setFilter('')">全部</button>
+            <button class="filter-chip" :class="msgFilter === 'forwarded' && 'active'" @click="setFilter('forwarded')">已转发</button>
+            <button class="filter-chip" :class="msgFilter === 'not_forwarded' && 'active'" @click="setFilter('not_forwarded')">未转发</button>
+            <button class="filter-chip" :class="msgFilter === 'otp' && 'active'" @click="setFilter('otp')">验证码</button>
+            <button class="filter-chip" :class="msgFilter === 'sent' && 'active'" @click="setFilter('sent')">已发送</button>
+          </div>
         </div>
 
         <template x-if="messages.length === 0 && !loading">
@@ -754,6 +793,7 @@
         // 消息
         messages: [],
         searchPhone: '',
+        msgFilter: '',
         page: 1,
         pageSize: 20,
         total: 0,
@@ -825,6 +865,11 @@
           this.$refs.tabContent.scrollTop = 0;
         },
 
+        setFilter(f) {
+          this.msgFilter = f;
+          this.loadMessages(true);
+        },
+
         // ─── 消息 ───
         async loadMessages(reset = false) {
           if (reset) this.page = 1;
@@ -832,6 +877,7 @@
           try {
             const params = new URLSearchParams({ page: this.page, pageSize: this.pageSize });
             if (this.searchPhone) params.set('phone', this.searchPhone);
+            if (this.msgFilter) params.set('filter', this.msgFilter);
             const res = await fetch(`/api/messages?${params}`);
             const data = await res.json();
             this.messages = reset || this.page === 1 ? data.messages : [...this.messages, ...data.messages];
@@ -926,8 +972,18 @@
             try {
               const { type, data } = JSON.parse(e.data);
               if (type === 'sms') {
-                this.messages.unshift({ ...data, id: Date.now(), received_at: data.timestamp });
-                this.total++;
+                const newMsg = { ...data, id: Date.now(), received_at: data.timestamp, direction: data.direction || 'in' };
+                // 有过滤条件时，只添加匹配当前过滤的消息
+                const f = this.msgFilter;
+                const match = !f
+                  || (f === 'forwarded' && newMsg.forwarded && newMsg.direction !== 'out')
+                  || (f === 'not_forwarded' && !newMsg.forwarded && newMsg.direction !== 'out')
+                  || (f === 'otp' && newMsg.otp)
+                  || (f === 'sent' && newMsg.direction === 'out');
+                if (match) {
+                  this.messages.unshift(newMsg);
+                  this.total++;
+                }
                 this.showToast('收到新短信');
               }
               if (type === 'log') {
@@ -952,8 +1008,11 @@
           const now = new Date();
           const isToday = d.toDateString() === now.toDateString();
           const hm = d.toTimeString().slice(0, 5);
-          if (isToday) return hm;
-          return `${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')} ${hm}`;
+          const mm = (d.getMonth() + 1).toString().padStart(2, '0');
+          const dd = d.getDate().toString().padStart(2, '0');
+          if (isToday) return '今天 ' + hm;
+          if (d.getFullYear() === now.getFullYear()) return `${mm}-${dd} ${hm}`;
+          return `${d.getFullYear()}-${mm}-${dd} ${hm}`;
         },
 
         fmtUptime(s) {
@@ -987,7 +1046,18 @@
 
         async copyText(text) {
           try {
-            await navigator.clipboard.writeText(text);
+            if (navigator.clipboard && window.isSecureContext) {
+              await navigator.clipboard.writeText(text);
+            } else {
+              // HTTP 环境下 Clipboard API 不可用，使用 execCommand 兜底
+              const ta = document.createElement('textarea');
+              ta.value = text;
+              ta.style.cssText = 'position:fixed;left:-9999px;top:-9999px';
+              document.body.appendChild(ta);
+              ta.select();
+              document.execCommand('copy');
+              document.body.removeChild(ta);
+            }
             this.showToast('已复制: ' + text);
           } catch {
             this.showToast('复制失败');

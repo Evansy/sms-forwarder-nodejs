@@ -7,16 +7,18 @@ import logger from '../logger/index.js';
 const router = Router();
 
 /**
- * 历史消息列表（分页）
- * GET /api/messages?page=1&pageSize=20&phone=xxx
+ * 历史消息列表（分页 + 过滤）
+ * GET /api/messages?page=1&pageSize=20&phone=xxx&filter=otp
+ * filter: all | forwarded | not_forwarded | otp | sent
  */
 router.get('/api/messages', (req, res) => {
   try {
     const page = Math.max(1, parseInt(req.query.page, 10) || 1);
     const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize, 10) || 20));
     const phone = req.query.phone || undefined;
+    const filter = req.query.filter || undefined;
 
-    const result = queryMessages({ page, pageSize, phone });
+    const result = queryMessages({ page, pageSize, phone, filter });
     res.json(result);
   } catch (err) {
     logger.error({ err }, 'API: 查询消息失败');
