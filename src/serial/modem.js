@@ -127,32 +127,38 @@ class Modem extends EventEmitter {
    * 发送短信（AT+CMGS 两阶段指令）
    *
    * 流程:
-   *   1. AT+CMGS="phone" → 等待 ">" 提示符
-   *   2. 短信内容 + \x1a (Ctrl+Z) → 等待 OK
+   *   1. AT+CSCS="UCS2" 切换字符集
+   *   2. AT+CMGS="phone" → 等待 ">" 提示符（号码保持原样，不编码）
+   *   3. UCS2 编码的短信内容 + \x1a (Ctrl+Z) → 等待 OK
+   *   4. 恢复字符集
    *
-   * UCS2 模式下号码和内容都需要 hex 编码
-   *
-   * @param {string} phone - 目标号码
+   * @param {string} phone - 目标号码（原始格式，如 18107554722）
    * @param {string} content - 短信内容
    * @returns {Promise<string[]>}
    */
   async sendSms(phone, content) {
-    // 确保字符集为 UCS2（发送中文内容必须）
+    // 切换字符集为 UCS2（发送中文内容必须）
     await this.send('AT+CSCS="UCS2"');
 
-    const encodedPhone = encodeUCS2Hex(phone);
     const encodedContent = encodeUCS2Hex(content);
 
-    return new Promise((resolve, reject) => {
-      this._queue.push({
-        command: `AT+CMGS="${encodedPhone}"`,
-        resolve,
-        reject,
-        timeout: 60_000,
-        _smsPayload: encodedContent,
+    try {
+      const result = await new Promise((resolve, reject) => {
+        this._queue.push({
+          // 号码不做 UCS2 编码，Air724UG 的 AT+CMGS 始终接受原始号码格式
+          command: `AT+CMGS="${phone}"`,
+          resolve,
+          reject,
+          timeout: 60_000,
+          _smsPayload: encodedContent,
+        });
+        this._processQueue();
       });
-      this._processQueue();
-    });
+      return result;
+    } finally {
+      // 恢复字符集，避免影响后续 AT 指令
+      try { await this.send('AT+CSCS="GSM"'); } catch { /* ignore */ }
+    }
   }
 
   /**
