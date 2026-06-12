@@ -935,6 +935,7 @@
           if (msg.includes('+CMS ERROR: 302')) return '短信服务被拒绝';
           if (msg.includes('+CMS ERROR: 304')) return '号码格式无效';
           if (msg.includes('+CMS ERROR: 305')) return '号码被禁止';
+          if (msg.includes('+CMS ERROR: 518')) return '发送被拒绝，可能该号码不支持接收短信';
           if (msg.includes('+CMS ERROR: 330')) return '网络不可用';
           if (msg.includes('+CMS ERROR: 331')) return '网络超时';
           if (msg.includes('+CMS ERROR')) return '模块返回错误: ' + msg;
