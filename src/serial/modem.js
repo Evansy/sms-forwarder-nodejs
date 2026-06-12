@@ -6,7 +6,7 @@ import logger from '../logger/index.js';
 import { parseCMTI, isURC } from './parser.js';
 
 /**
- * 将字符串编码为 UCS2 hex（用于发送短信）
+ * 将字符串编码为 UCS2 hex
  * @param {string} str
  * @returns {string}
  */
@@ -16,6 +16,67 @@ function encodeUCS2Hex(str) {
     hex += str.charCodeAt(i).toString(16).padStart(4, '0').toUpperCase();
   }
   return hex;
+}
+
+/**
+ * 构建 SMS-SUBMIT PDU（用于 PDU 模式发送中文短信）
+ *
+ * 文本模式下 CSCS="UCS2" 会导致号码编码冲突，
+ * PDU 模式直接构建底层数据帧，绕过 CSCS 限制。
+ *
+ * @param {string} phone - 目标号码
+ * @param {string} content - 短信内容（UCS2 编码）
+ * @returns {{ pdu: string, tpduLen: number }}
+ */
+function buildSmsPdu(phone, content) {
+  // SCA: 使用 SIM 卡默认短信中心（长度=0）
+  let pdu = '00';
+
+  // First Octet: SMS-SUBMIT, 相对有效期
+  // MTI=01, VPF=10 (relative), 其余=0 → 0b00010001 = 0x11
+  const tpdu = ['11'];
+
+  // Message Reference: 0（模块自动分配）
+  tpdu.push('00');
+
+  // Destination Address
+  const cleanPhone = phone.replace(/[^\d+]/g, '');
+  const hasPlus = cleanPhone.startsWith('+');
+  const digits = hasPlus ? cleanPhone.slice(1) : cleanPhone;
+  // DA-Length: 号码位数（semi-octets）
+  tpdu.push(digits.length.toString(16).padStart(2, '0').toUpperCase());
+  // Type-of-Address: 91=国际格式(+), 81=国内格式
+  tpdu.push(hasPlus ? '91' : '81');
+  // BCD 编码号码（每两位交换）
+  let bcd = '';
+  for (let i = 0; i < digits.length; i += 2) {
+    const d1 = digits[i];
+    const d2 = i + 1 < digits.length ? digits[i + 1] : 'F';
+    bcd += d2 + d1;
+  }
+  tpdu.push(bcd.toUpperCase());
+
+  // PID: 0
+  tpdu.push('00');
+
+  // DCS: 0x08 = UCS2
+  tpdu.push('08');
+
+  // VP: 相对有效期，0xA7 = 24 小时
+  tpdu.push('A7');
+
+  // User Data Length: UCS2 的字节数
+  const udBytes = content.length * 2;
+  tpdu.push(udBytes.toString(16).padStart(2, '0').toUpperCase());
+
+  // User Data: UCS2 编码内容
+  tpdu.push(encodeUCS2Hex(content));
+
+  const tpduHex = tpdu.join('');
+  // TPDU 长度 = hex 字符数 / 2
+  const tpduLen = tpduHex.length / 2;
+
+  return { pdu: pdu + tpduHex, tpduLen };
 }
 
 /**
@@ -124,14 +185,18 @@ class Modem extends EventEmitter {
   }
 
   /**
-   * 发送短信（AT+CMGS 两阶段指令）
+   * 发送短信
    *
    * 编码策略：
-   *   - 纯 ASCII 内容 → CSCS="GSM"，明文发送
-   *   - 含非 ASCII（中文等）→ CSCS="UCS2"，hex 编码发送
-   *   - 号码始终保持原始格式
+   *   - 纯 ASCII → 文本模式 (CSCS="GSM", 明文)
+   *   - 含中文等非 ASCII → PDU 模式 (直接构建数据帧, 绕过 CSCS)
    *
-   * @param {string} phone - 目标号码（原始格式，如 18107554722）
+   * Air724UG 文本模式下 CSCS="UCS2" 与号码格式存在兼容问题:
+   *   - UCS2 编码号码 → ERROR 304 (号码过长)
+   *   - 明文号码 + CSCS="UCS2" → ERROR 518 (格式不一致)
+   * PDU 模式不受 CSCS 影响，是发送中文 SMS 的可靠方案。
+   *
+   * @param {string} phone - 目标号码
    * @param {string} content - 短信内容
    * @returns {Promise<string[]>}
    */
@@ -139,31 +204,60 @@ class Modem extends EventEmitter {
     // eslint-disable-next-line no-control-regex
     const needUCS2 = /[^\x00-\x7F]/.test(content);
 
-    let payload;
     if (needUCS2) {
-      await this.send('AT+CSCS="UCS2"');
-      payload = encodeUCS2Hex(content);
-    } else {
-      await this.send('AT+CSCS="GSM"');
-      payload = content;
+      return this._sendSmsPdu(phone, content);
     }
+
+    // 纯 ASCII: 文本模式
+    await this.send('AT+CSCS="GSM"');
+    return new Promise((resolve, reject) => {
+      this._queue.push({
+        command: `AT+CMGS="${phone}"`,
+        resolve,
+        reject,
+        timeout: 60_000,
+        _smsPayload: content,
+      });
+      this._processQueue();
+    });
+  }
+
+  /**
+   * PDU 模式发送短信（用于中文等非 ASCII 内容）
+   *
+   * 流程:
+   *   1. AT+CMGF=0 → 切换到 PDU 模式
+   *   2. AT+CMGS=<tpduLen> → 等待 ">" 提示符
+   *   3. PDU hex 数据 + \x1a → 等待 OK
+   *   4. AT+CMGF=1 → 恢复文本模式
+   *
+   * @param {string} phone
+   * @param {string} content
+   * @returns {Promise<string[]>}
+   */
+  async _sendSmsPdu(phone, content) {
+    const { pdu, tpduLen } = buildSmsPdu(phone, content);
+    logger.debug({ phone, tpduLen, pduLen: pdu.length }, 'PDU 模式发送短信');
+
+    await this.send('AT+CMGF=0');
 
     try {
       const result = await new Promise((resolve, reject) => {
         this._queue.push({
-          command: `AT+CMGS="${phone}"`,
+          command: `AT+CMGS=${tpduLen}`,
           resolve,
           reject,
           timeout: 60_000,
-          _smsPayload: payload,
+          _smsPayload: pdu,
         });
         this._processQueue();
       });
       return result;
     } finally {
-      if (needUCS2) {
-        try { await this.send('AT+CSCS="GSM"'); } catch { /* ignore */ }
-      }
+      // 恢复文本模式（收短信依赖文本模式解析）
+      try { await this.send('AT+CMGF=1'); } catch { /* ignore */ }
+      // 重新设置 CNMI，确保恢复后短信通知不丢
+      try { await this.send('AT+CNMI=2,1,0,0,0'); } catch { /* ignore */ }
     }
   }
 
