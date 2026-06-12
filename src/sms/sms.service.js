@@ -68,9 +68,17 @@ export function queueNewSms(index) {
 
 /**
  * 批量读取短信并分流处理
+ *
+ * 策略：
+ *   1. 逐个 AT+CMGR 读取（快、精确）
+ *   2. 如果遇到 321（索引失效），累计失败次数
+ *   3. 有失败时，最后用 AT+CMGL 兜底扫描所有未读（慢但可靠）
+ *
  * @param {number[]} indices
  */
 async function processBatch(indices) {
+  let failedCount = 0;
+
   for (const index of indices) {
     processingIndexes.add(index);
     try {
@@ -88,15 +96,46 @@ async function processBatch(indices) {
       const sms = buildSmsRecord(parsed);
       await routeSms(sms, index, lines);
     } catch (err) {
-      // CMS ERROR 321 = 索引不存在（已删除或尚未写入完成），降级处理
       if (err.message?.includes('321')) {
-        logger.debug({ index }, '短信索引不存在，跳过 (321)');
+        logger.debug({ index }, '短信索引不存在 (321)，将尝试 CMGL 兜底');
+        failedCount++;
       } else {
         logger.error({ err, index }, '读取短信失败');
       }
     } finally {
       processingIndexes.delete(index);
     }
+  }
+
+  // 有索引失败时，用 AT+CMGL 兜底扫描未读短信
+  if (failedCount > 0) {
+    logger.info({ failedCount }, '存在索引失效，执行 CMGL 兜底扫描');
+    await fallbackScanUnread();
+  }
+}
+
+/**
+ * AT+CMGL 兜底扫描：读取所有未读短信
+ * 用于 AT+CMGR 索引失效时的可靠回退
+ */
+async function fallbackScanUnread() {
+  try {
+    const lines = await modem.send('AT+CMGL="REC UNREAD"');
+    const messages = parseCMGL(lines);
+
+    if (messages.length === 0) {
+      logger.debug('CMGL 兜底扫描：无未读短信');
+      return;
+    }
+
+    logger.info({ count: messages.length }, 'CMGL 兜底扫描发现未读短信');
+
+    for (const msg of messages) {
+      const sms = buildSmsRecord(msg);
+      await routeSms(sms, msg.index, [JSON.stringify(msg)]);
+    }
+  } catch (err) {
+    logger.error({ err }, 'CMGL 兜底扫描失败');
   }
 }
 
