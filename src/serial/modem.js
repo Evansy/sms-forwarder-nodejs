@@ -3,7 +3,7 @@ import { SerialPort } from 'serialport';
 import { ReadlineParser } from '@serialport/parser-readline';
 import config from '../config/index.js';
 import logger from '../logger/index.js';
-import { parseCMTI, isURC } from './parser.js';
+import { parseCMTI, parseCMTHeader, isURC } from './parser.js';
 
 /**
  * 将字符串编码为 UCS2 hex
@@ -116,6 +116,14 @@ class Modem extends EventEmitter {
     this._reconnectTimer = null;
     /** @type {boolean} 是否正在关闭（优雅退出时不重连） */
     this._closing = false;
+
+    /**
+     * +CMT 多行 URC 缓冲
+     * CNMI mt=2 时短信以 +CMT 直接推送，头行和内容行分两行到达。
+     * 收到 +CMT 头行后暂存，下一行作为内容行处理。
+     * @type {{ phone: string, timestamp: string, _ucs2: boolean } | null}
+     */
+    this._pendingCmtHeader = null;
   }
 
   /**
@@ -320,6 +328,15 @@ class Modem extends EventEmitter {
 
     logger.debug({ line: trimmed }, 'AT 收到');
 
+    // +CMT 第二行：内容行（上一行是 +CMT 头行）
+    if (this._pendingCmtHeader) {
+      const header = this._pendingCmtHeader;
+      this._pendingCmtHeader = null;
+      logger.info({ phone: header.phone }, '收到 +CMT 直接投递短信');
+      this.emit('cmt', { ...header, rawContent: trimmed });
+      return;
+    }
+
     // URC 优先处理：不进入命令响应流程
     if (isURC(trimmed)) {
       this._handleURC(trimmed);
@@ -355,8 +372,18 @@ class Modem extends EventEmitter {
     if (line.startsWith('+CMTI:')) {
       const index = parseCMTI(line);
       if (index !== null) {
-        logger.info({ index }, '收到新短信通知');
+        logger.info({ index }, '收到新短信通知 (+CMTI)');
         this.emit('cmti', index);
+      }
+      return;
+    }
+
+    // +CMT 直接投递：头行暂存，等待下一行的内容
+    if (line.startsWith('+CMT:')) {
+      const header = parseCMTHeader(line);
+      if (header) {
+        this._pendingCmtHeader = header;
+        logger.debug({ phone: header.phone }, '+CMT 头行已缓冲，等待内容行');
       }
       return;
     }

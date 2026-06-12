@@ -40,7 +40,7 @@ function decodeUCS2Hex(hex) {
  * @param {string} str
  * @returns {string}
  */
-function autoDecodeUCS2(str) {
+export function autoDecodeUCS2(str) {
   if (!str || !isUCS2Hex(str)) return str;
   try {
     return decodeUCS2Hex(str);
@@ -61,6 +61,30 @@ function autoDecodeUCS2(str) {
 export function parseCMTI(line) {
   const match = line.match(/\+CMTI:\s*"[^"]*",\s*(\d+)/);
   return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * 解析 +CMT 短信直接投递的头行
+ *
+ * CNMI mt=2 时模块直接推送短信内容（不存入 SIM），格式：
+ *   +CMT: "phone","name","timestamp"
+ *   <content>
+ *
+ * UCS2 模式下 phone 为 hex 编码
+ *
+ * @param {string} line - +CMT 头行
+ * @returns {{ phone: string, timestamp: string, _ucs2: boolean } | null}
+ */
+export function parseCMTHeader(line) {
+  // 兼容 name 为空（,, 或 "",）
+  const match = line.match(/\+CMT:\s*"([^"]*)",\s*(?:"[^"]*")?,\s*"([^"]*)"/);
+  if (!match) return null;
+
+  const [, rawPhone, timestamp] = match;
+  const ucs2Mode = isUCS2Hex(rawPhone);
+  const phone = ucs2Mode ? decodeUCS2Hex(rawPhone) : rawPhone;
+
+  return { phone, timestamp, _ucs2: ucs2Mode };
 }
 
 /**
@@ -184,6 +208,7 @@ function finalizeContent(buf, ucs2) {
 export function isURC(line) {
   return (
     line.startsWith('+CMTI:') ||
+    line.startsWith('+CMT:') ||
     line === 'SMS READY' ||
     line === 'SMSFULL' ||
     line.startsWith('+CIEV:') ||

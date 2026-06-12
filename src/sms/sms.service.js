@@ -10,7 +10,7 @@
  */
 
 import modem from '../serial/modem.js';
-import { parseCMGR, parseCMGL } from '../serial/parser.js';
+import { parseCMGR, parseCMGL, autoDecodeUCS2 } from '../serial/parser.js';
 import { buildSmsRecord } from './sms.parser.js';
 import { extractOtp } from './otp.js';
 import { SmsAggregator } from './aggregator.js';
@@ -64,6 +64,36 @@ export function queueNewSms(index) {
     batchTimer = null;
     await processBatch(indices);
   }, BATCH_DELAY_MS);
+}
+
+/**
+ * 处理 +CMT 直接投递的短信（CNMI mt=2 模式）
+ *
+ * 与 +CMTI 不同，+CMT 短信不经过 SIM 卡存储，内容直接在 URC 中推送。
+ * 优点：不依赖 SIM 读写，不会出现 321 错误。
+ *
+ * @param {{ phone: string, timestamp: string, rawContent: string, _ucs2: boolean }} data
+ */
+export async function handleDirectSms(data) {
+  const { phone, timestamp, rawContent, _ucs2 } = data;
+  const content = _ucs2 ? autoDecodeUCS2(rawContent) : rawContent;
+
+  if (!content) {
+    logger.warn({ phone }, '+CMT 短信内容为空');
+    return;
+  }
+
+  logger.info({ phone, contentLen: content.length }, '处理 +CMT 直接投递短信');
+
+  const sms = {
+    phone,
+    content,
+    timestamp: timestamp || new Date().toISOString(),
+  };
+
+  // 复用现有的分流逻辑（OTP 立即推送 / 普通短信聚合）
+  // index 设为 -1 表示非 SIM 存储（不需要删除）
+  await routeSms(sms, -1, [`+CMT direct: ${phone}`]);
 }
 
 /**
@@ -411,7 +441,8 @@ async function processScanGroup(items) {
  * @param {number} index
  */
 async function deleteSms(index) {
-  if (!config.sms.deleteAfterForward) return;
+  // index < 0 表示 +CMT 直接投递，不在 SIM 存储中，无需删除
+  if (index < 0 || !config.sms.deleteAfterForward) return;
 
   try {
     await modem.send(`AT+CMGD=${index}`);

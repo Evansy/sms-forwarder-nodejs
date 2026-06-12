@@ -16,7 +16,7 @@ import config, { validateConfig } from './config/index.js';
 import logger from './logger/index.js';
 import { closeDb } from './database/sqlite.js';
 import modem from './serial/modem.js';
-import { queueNewSms, scanUnread, handleStorageFull } from './sms/sms.service.js';
+import { queueNewSms, handleDirectSms, scanUnread, handleStorageFull } from './sms/sms.service.js';
 import { startWebServer } from './web/server.js';
 
 /** @type {NodeJS.Timeout|null} */
@@ -43,9 +43,11 @@ async function initModem() {
     logger.debug('AT+RNDISCALL 不支持或已关闭，跳过');
   }
 
-  // 开启短信实时通知
-  await modem.send('AT+CNMI=2,1,0,0,0');
-  logger.info('已开启短信通知 (AT+CNMI=2,1,0,0,0)');
+  // 开启短信直接投递模式（mt=2: +CMT 直接推送内容，不存入 SIM）
+  // Air724UG 的 SIM 卡存储有兼容问题（+CMTI 通知但 SIM 为空），
+  // 直接投递模式绕过 SIM 存储，内容随 URC 推送，更可靠。
+  await modem.send('AT+CNMI=2,2,0,0,0');
+  logger.info('已开启短信直接投递 (AT+CNMI=2,2,0,0,0)');
 
   // 设置短信存储区
   await modem.send('AT+CPMS="SM","SM","SM"');
@@ -79,7 +81,12 @@ async function initModem() {
  * 注册事件监听
  */
 function setupEventHandlers() {
-  // 新短信通知（加入批处理队列，等待长短信片段到齐后合并处理）
+  // +CMT 直接投递（主模式）：CNMI mt=2，短信内容直接在 URC 中推送
+  modem.on('cmt', (data) => {
+    handleDirectSms(data);
+  });
+
+  // +CMTI 回退（兼容）：如果 CNMI 被模块重置为 mt=1，仍能处理
   modem.on('cmti', (index) => {
     queueNewSms(index);
   });
@@ -108,7 +115,7 @@ function setupEventHandlers() {
 function startCnmiRefresh() {
   cnmiTimer = setInterval(async () => {
     try {
-      await modem.send('AT+CNMI=2,1,0,0,0');
+      await modem.send('AT+CNMI=2,2,0,0,0');
       logger.debug('CNMI 定时刷新完成');
     } catch (err) {
       logger.warn({ err: err.message }, 'CNMI 定时刷新失败');
