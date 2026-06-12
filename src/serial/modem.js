@@ -208,18 +208,23 @@ class Modem extends EventEmitter {
       return this._sendSmsPdu(phone, content);
     }
 
-    // 纯 ASCII: 文本模式
+    // 纯 ASCII: 文本模式，临时切 GSM 字符集
     await this.send('AT+CSCS="GSM"');
-    return new Promise((resolve, reject) => {
-      this._queue.push({
-        command: `AT+CMGS="${phone}"`,
-        resolve,
-        reject,
-        timeout: 60_000,
-        _smsPayload: content,
+    try {
+      return await new Promise((resolve, reject) => {
+        this._queue.push({
+          command: `AT+CMGS="${phone}"`,
+          resolve,
+          reject,
+          timeout: 60_000,
+          _smsPayload: content,
+        });
+        this._processQueue();
       });
-      this._processQueue();
-    });
+    } finally {
+      // 恢复 UCS2 字符集，确保后续收短信解析正常
+      try { await this.send('AT+CSCS="UCS2"'); } catch { /* ignore */ }
+    }
   }
 
   /**

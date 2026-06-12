@@ -51,13 +51,12 @@ async function initModem() {
   await modem.send('AT+CPMS="SM","SM","SM"');
   logger.info('已设置短信存储区 (SM)');
 
-  // 查询当前字符集
-  try {
-    const cscsLines = await modem.send('AT+CSCS?');
-    logger.info({ cscs: cscsLines.join(' ') }, '当前字符集');
-  } catch {
-    logger.debug('查询字符集失败');
-  }
+  // 强制设置 UCS2 字符集
+  // 解析器依赖 UCS2 hex 格式来检测和解码中文内容；
+  // 不同 SIM 卡默认字符集不同（giffgaff=UCS2, 中国电信=GSM），
+  // 主动设置确保行为一致
+  await modem.send('AT+CSCS="UCS2"');
+  logger.info('已设置字符集 UCS2 (AT+CSCS="UCS2")');
 
   // 查询信号强度
   try {
