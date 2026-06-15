@@ -190,6 +190,13 @@
       border-radius: var(--radius);
       margin-bottom: 10px;
       animation: slideUp 0.3s ease-out both;
+      /* 视觉样式在 wrapper 上，overflow:hidden + border-radius 统一裁剪 */
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow-card);
+      touch-action: pan-y;
+      -webkit-user-select: none;
+      user-select: none;
     }
 
     .msg-swipe-wrap.deleting {
@@ -203,15 +210,11 @@
 
     .msg-card {
       background: var(--bg-card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
       padding: 14px 16px;
-      box-shadow: var(--shadow-card);
       position: relative;
       z-index: 1;
       transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
       will-change: transform;
-      touch-action: pan-y;
     }
 
     .msg-card.swiping { transition: none; }
@@ -228,7 +231,6 @@
       align-items: center;
       justify-content: center;
       background: var(--danger);
-      border-radius: 0 var(--radius) var(--radius) 0;
     }
 
     .msg-delete-zone button {
@@ -712,7 +714,7 @@
                 </template>
               </div>
             </div>
-            <div class="msg-delete-zone">
+            <div class="msg-delete-zone" x-show="_swipeId === m.id">
               <button @click.stop="deleteMsg(m.id, i)">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                 删除
@@ -973,7 +975,8 @@
         swipeStart(e, id) {
           // 已有其他卡片滑开，先关闭
           if (this._swipeId !== null && this._swipeId !== id) {
-            this.closeSwipe();
+            this._swipeX = 0;
+            this._swipeId = null;
           }
           this._swipeStartX = e.touches[0].clientX;
           this._swipeStartY = e.touches[0].clientY;
@@ -986,14 +989,15 @@
 
           const dx = e.touches[0].clientX - this._swipeStartX;
           const dy = e.touches[0].clientY - this._swipeStartY;
+          const absDx = Math.abs(dx);
+          const absDy = Math.abs(dy);
 
-          // 首次移动超过 8px 时判定方向
-          if (!this._swipeActive && (Math.abs(dx) > 8 || Math.abs(dy) > 8)) {
-            if (Math.abs(dx) > Math.abs(dy)) {
+          // 首次移动 >12px 时判定方向，水平需明显大于垂直
+          if (!this._swipeActive && (absDx > 12 || absDy > 12)) {
+            if (absDx > absDy * 1.8 && dx < 0) {
               this._swipeActive = true;
               this._swipeId = id;
             } else {
-              // 纵向滚动，锁定不再处理
               this._swipeLocked = true;
               return;
             }
@@ -1002,7 +1006,6 @@
           if (!this._swipeActive) return;
           e.preventDefault();
 
-          // 只允许左滑（负值），带弹性阻力
           const DELETE_W = 76;
           const offset = Math.min(0, dx);
           this._swipeX = offset < -DELETE_W
@@ -1014,7 +1017,6 @@
           if (!this._swipeActive) return;
           this._swipeActive = false;
 
-          // 滑过一半宽度 → 停在删除位置；否则弹回
           if (this._swipeX < -38) {
             this._swipeX = -76;
           } else {
@@ -1024,7 +1026,11 @@
 
         closeSwipe() {
           this._swipeX = 0;
-          this._swipeId = null;
+          // 延迟清除 ID，让卡片回弹动画先完成
+          const closingId = this._swipeId;
+          setTimeout(() => {
+            if (this._swipeId === closingId) this._swipeId = null;
+          }, 320);
         },
 
         async deleteMsg(id, index) {
