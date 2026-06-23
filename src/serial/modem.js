@@ -156,6 +156,11 @@ class Modem extends EventEmitter {
         logger.warn('串口已断开');
         this.emit('close');
         this._rejectCurrent(new Error('串口断开'));
+        // 清空队列中的待执行指令，避免重连后发送过期指令
+        for (const item of this._queue) {
+          item.reject(new Error('串口断开'));
+        }
+        this._queue.length = 0;
         if (!this._closing) {
           this._scheduleReconnect();
         }
@@ -271,8 +276,8 @@ class Modem extends EventEmitter {
       try { await this.send('AT+CMGF=1'); } catch { /* ignore */ }
       // 防御性恢复 UCS2 字符集（某些模块切换 CMGF 可能重置 CSCS）
       try { await this.send('AT+CSCS="UCS2"'); } catch { /* ignore */ }
-      // 重新设置 CNMI，确保恢复后短信通知不丢
-      try { await this.send('AT+CNMI=2,1,0,0,0'); } catch { /* ignore */ }
+      // 重新设置 CNMI，确保恢复后短信通知不丢（mt=2 保持直接投递模式）
+      try { await this.send('AT+CNMI=2,2,0,0,0'); } catch { /* ignore */ }
     }
   }
 

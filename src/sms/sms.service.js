@@ -153,7 +153,7 @@ async function processBatch(indices) {
 }
 
 /**
- * 发送 AT+CMGL 指令（处理 CSCS 兼容性）
+ * 发送 AT+CMGL 指令（处理 CSCS 兼容性和模块未就绪）
  *
  * Air724UG 文本模式下 CMGL 必须用字符串参数（"REC UNREAD"/"ALL"），
  * 数字参数只在 PDU 模式有效，会返回 305 错误。
@@ -162,13 +162,24 @@ async function processBatch(indices) {
  *   1. 先尝试直接发送字符串参数
  *   2. 如果 305 失败，临时切 GSM 字符集重试
  *
+ * CMS ERROR 302 = 模块未就绪（重连后 SIM 卡尚未初始化），延迟重试
+ *
  * @param {string} filter - "REC UNREAD" | "ALL"
+ * @param {number} [retries=2] - 302 错误重试次数
  * @returns {Promise<string[]>}
  */
-async function sendCmgl(filter) {
+async function sendCmgl(filter, retries = 2) {
   try {
     return await modem.send(`AT+CMGL="${filter}"`);
   } catch (err) {
+    // 302 = Operation not allowed（模块未就绪），延迟重试
+    if (err.message?.includes('302') && retries > 0) {
+      const delay = (3 - retries + 1) * 3_000;
+      logger.warn({ filter, retries, delay }, 'CMGL 失败(302 模块未就绪)，延迟重试');
+      await sleep(delay);
+      return sendCmgl(filter, retries - 1);
+    }
+
     if (!err.message?.includes('305')) throw err;
 
     // 305 = 字符串参数被 UCS2 编码干扰，临时切 GSM 重试
@@ -463,8 +474,8 @@ export async function handleStorageFull() {
   try {
     logger.warn('执行存储满清理: AT+CMGD=1,4');
     await modem.send('AT+CMGD=1,4');
-    // 重新设置 CNMI，防止被重置
-    await modem.send('AT+CNMI=2,1,0,0,0');
+    // 重新设置 CNMI（mt=2 保持直接投递模式），防止被重置
+    await modem.send('AT+CNMI=2,2,0,0,0');
     logger.info('存储满清理完成，CNMI 已重新设置');
   } catch (err) {
     logger.error({ err }, '存储满清理失败');
