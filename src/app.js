@@ -22,9 +22,6 @@ import { startWebServer } from './web/server.js';
 /** @type {NodeJS.Timeout|null} */
 let cnmiTimer = null;
 
-/** @param {number} ms */
-function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
-
 /**
  * 发送初始化 AT 指令序列
  */
@@ -104,52 +101,9 @@ function setupEventHandlers() {
     logger.info('串口重连成功，重新初始化模块');
     try {
       await initModem();
+      await scanUnread();
     } catch (err) {
-      logger.error({ err }, '重连后初始化模块失败，将等待下次重连');
-      return;
-    }
-
-    // 等待模块就绪后再扫描未读短信
-    // 重连后 CSQ 可能返回 99,99（信号未恢复），SIM 卡尚未就绪
-    // 立即执行 AT+CMGL 会触发 CMS ERROR 302
-    const maxWait = 10_000;
-    const checkInterval = 1_000;
-    let waited = 0;
-    while (waited < maxWait) {
-      await sleep(checkInterval);
-      waited += checkInterval;
-      try {
-        const csqLines = await modem.send('AT+CSQ');
-        const csq = csqLines.join(' ');
-        // CSQ 99,99 表示信号未恢复，继续等待
-        if (!csq.includes('99,99')) {
-          logger.info({ csq, waitedMs: waited }, '模块信号已恢复');
-          break;
-        }
-        logger.debug({ waitedMs: waited }, '模块信号未恢复，继续等待...');
-      } catch {
-        logger.debug({ waitedMs: waited }, '信号查询失败，继续等待...');
-      }
-    }
-
-    if (waited >= maxWait) {
-      logger.warn({ waitedMs: waited }, '等待模块就绪超时，尝试扫描未读短信');
-    }
-
-    // scanUnread 带重试：CMS ERROR 302 时延迟重试
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      try {
-        await scanUnread();
-        break;
-      } catch (err) {
-        if (attempt < 3) {
-          const retryDelay = attempt * 3_000;
-          logger.warn({ err: err.message, attempt, retryDelay }, '扫描未读短信失败，稍后重试');
-          await sleep(retryDelay);
-        } else {
-          logger.error({ err }, '扫描未读短信最终失败');
-        }
-      }
+      logger.error({ err }, '重连后初始化失败');
     }
   });
 }
