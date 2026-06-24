@@ -384,7 +384,13 @@ function groupByPhone(items) {
 function subGroupByTimestamp(items) {
   if (items.length <= 1) return [items];
 
-  items.sort((a, b) => a.index - b.index);
+  // 按时间戳排序（优先），索引次之
+  items.sort((a, b) => {
+    const tsA = parseTimestampMs(a.sms.timestamp);
+    const tsB = parseTimestampMs(b.sms.timestamp);
+    if (tsA > 0 && tsB > 0 && tsA !== tsB) return tsA - tsB;
+    return a.index - b.index;
+  });
 
   const groups = [];
   let currentGroup = [items[0]];
@@ -409,7 +415,12 @@ function subGroupByTimestamp(items) {
  * 处理扫描到的一组短信（可能是合并后的）
  */
 async function processScanGroup(items) {
-  items.sort((a, b) => a.index - b.index);
+  items.sort((a, b) => {
+    const tsA = parseTimestampMs(a.sms.timestamp);
+    const tsB = parseTimestampMs(b.sms.timestamp);
+    if (tsA > 0 && tsB > 0 && tsA !== tsB) return tsA - tsB;
+    return a.index - b.index;
+  });
 
   const phone = items[0].sms.phone;
   const timestamp = items[0].sms.timestamp;

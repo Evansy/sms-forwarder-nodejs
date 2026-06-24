@@ -101,7 +101,10 @@ function setupEventHandlers() {
     logger.info('串口重连成功，重新初始化模块');
     try {
       await initModem();
-      await scanUnread();
+      // 不执行 scanUnread():
+      // 1. +CMT 直接投递模式下，断开期间的短信不会存入 SIM，扫描无意义
+      // 2. CMGL 命令在模块不稳定时容易导致再次崩溃，形成无限重连循环
+      logger.info('重连初始化完成（跳过未读扫描）');
     } catch (err) {
       logger.error({ err }, '重连后初始化失败');
     }

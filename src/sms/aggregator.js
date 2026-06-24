@@ -21,7 +21,8 @@ const DEFAULT_DELAY_MS = 5000;
  * @property {string} phone
  * @property {string} content
  * @property {string} timestamp
- * @property {number} index - SIM 卡索引
+ * @property {number} index - SIM 卡索引（+CMT 为 -1）
+ * @property {number} _seq - 到达序号（单调递增）
  * @property {string[]} rawLines - 原始 AT 响应
  */
 
@@ -48,6 +49,8 @@ export class SmsAggregator {
     /** @type {Map<string, { items: AggregateItem[], timer: NodeJS.Timeout, callback: OnReadyCallback }>} */
     this._pending = new Map();
     this._delayMs = delayMs;
+    /** @type {number} 全局到达序号，用于 +CMT 片段排序 */
+    this._seqCounter = 0;
   }
 
   /**
@@ -67,6 +70,7 @@ export class SmsAggregator {
     }
 
     const entry = this._pending.get(key);
+    item._seq = this._seqCounter++;
     entry.items.push(item);
     entry.callback = onReady;
 
@@ -93,8 +97,17 @@ export class SmsAggregator {
 
     this._pending.delete(key);
 
-    // 按 SIM 卡索引排序（索引小 = 先到达的片段）
-    entry.items.sort((a, b) => a.index - b.index);
+    // 排序策略：
+    //   1. SMSC 时间戳（同一长短信分片通常有微妙时间差，先发的片段时间更早）
+    //   2. SIM 索引 > 0 时按索引（+CMTI 模式，索引小=先到达）
+    //   3. 到达序号兜底（保持网络投递顺序）
+    entry.items.sort((a, b) => {
+      const tsA = _parseTimestampMs(a.timestamp);
+      const tsB = _parseTimestampMs(b.timestamp);
+      if (tsA > 0 && tsB > 0 && tsA !== tsB) return tsA - tsB;
+      if (a.index >= 0 && b.index >= 0) return a.index - b.index;
+      return (a._seq ?? 0) - (b._seq ?? 0);
+    });
 
     const merged = {
       phone: key,
@@ -107,11 +120,28 @@ export class SmsAggregator {
 
     if (merged.parts > 1) {
       logger.info(
-        { phone: key, parts: merged.parts, mergedLength: merged.content.length },
+        { phone: key, parts: merged.parts, mergedLength: merged.content.length,
+          order: entry.items.map((i) => `seq${i._seq}:idx${i.index}`) },
         '长短信聚合完成'
       );
     }
 
     entry.callback(merged);
   }
+}
+
+/**
+ * 解析 SMSC 时间戳为毫秒数
+ * 支持 AT 格式 "YY/MM/DD,HH:MM:SS+QQ" 和 ISO 格式
+ * @param {string} ts
+ * @returns {number} 解析失败返回 0
+ */
+function _parseTimestampMs(ts) {
+  if (!ts) return 0;
+  if (ts.includes('T')) return new Date(ts).getTime() || 0;
+  const m = ts.match(/(\d{2,4})\D(\d{2})\D(\d{2}),(\d{2}):(\d{2}):(\d{2})/);
+  if (!m) return 0;
+  let [, year, month, day, hour, min, sec] = m.map(Number);
+  if (year < 100) year += 2000;
+  return new Date(year, month - 1, day, hour, min, sec).getTime();
 }

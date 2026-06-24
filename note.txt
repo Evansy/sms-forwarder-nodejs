@@ -1,0 +1,200 @@
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] INFO: AT 通信正常
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] INFO: 已设置文本模式 (AT+CMGF=1)
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] INFO: 已关闭 RNDIS 网卡 (AT+RNDISCALL=0,0)
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] INFO: 已开启短信直接投递 (AT+CNMI=2,2,0,0,0)
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] INFO: 已设置短信存储区 (SM)
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] INFO: 已设置字符集 UCS2 (AT+CSCS="UCS2")
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] INFO: 信号强度
+Jun 24 10:05:58 armbian node[1919144]:     csq: "+CSQ: 99,99"
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] INFO: SIM 卡状态
+Jun 24 10:05:58 armbian node[1919144]:     cpin: "+CPIN: READY"
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] INFO: 开始扫描未读短信...
+Jun 24 10:05:58 armbian node[1919144]: [2026-06-24 10:05:58] ERROR: 扫描未读短信失败
+Jun 24 10:05:58 armbian node[1919144]:     err: {
+Jun 24 10:05:58 armbian node[1919144]:       "type": "Error",
+Jun 24 10:05:58 armbian node[1919144]:       "message": "AT 错误: +CMS ERROR: 302",
+Jun 24 10:05:58 armbian node[1919144]:       "stack":
+Jun 24 10:05:58 armbian node[1919144]:           Error: AT 错误: +CMS ERROR: 302
+Jun 24 10:05:58 armbian node[1919144]:               at Modem._onLine (file:///opt/sms-forwarder/src/serial/modem.js:361:27)
+Jun 24 10:05:58 armbian node[1919144]:               at ReadlineParser.<anonymous> (file:///opt/sms-forwarder/src/serial/modem.js:148:46)
+Jun 24 10:05:58 armbian node[1919144]:               at ReadlineParser.emit (node:events:519:28)
+Jun 24 10:05:58 armbian node[1919144]:               at addChunk (node:internal/streams/readable:561:12)
+Jun 24 10:05:58 armbian node[1919144]:               at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+Jun 24 10:05:58 armbian node[1919144]:               at Readable.push (node:internal/streams/readable:392:5)
+Jun 24 10:05:58 armbian node[1919144]:               at ReadlineParser._transform (/opt/sms-forwarder/node_modules/@serialport/parser-delimiter/dist/index.js:31:18)
+Jun 24 10:05:58 armbian node[1919144]:               at Transform._write (node:internal/streams/transform:171:8)
+Jun 24 10:05:58 armbian node[1919144]:               at writeOrBuffer (node:internal/streams/writable:572:12)
+Jun 24 10:05:58 armbian node[1919144]:               at _write (node:internal/streams/writable:501:10)
+Jun 24 10:05:58 armbian node[1919144]:     }
+Jun 24 10:06:01 armbian node[1919144]: [2026-06-24 10:06:01] WARN: 串口已断开
+Jun 24 10:06:01 armbian node[1919144]: [2026-06-24 10:06:01] INFO: 等待重连...
+Jun 24 10:06:01 armbian node[1919144]:     attempt: 1
+Jun 24 10:06:01 armbian node[1919144]:     delay: 5000
+Jun 24 10:06:06 armbian node[1919144]: [2026-06-24 10:06:06] INFO: 尝试重连串口
+Jun 24 10:06:06 armbian node[1919144]:     attempt: 1
+Jun 24 10:06:06 armbian node[1919144]: [2026-06-24 10:06:06] INFO: 串口已打开
+Jun 24 10:06:06 armbian node[1919144]:     port: "/dev/ttyUSB0"
+Jun 24 10:06:06 armbian node[1919144]:     baudRate: 115200
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: 串口重连成功，重新初始化模块
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: AT 通信正常
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: 已设置文本模式 (AT+CMGF=1)
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: 已关闭 RNDIS 网卡 (AT+RNDISCALL=0,0)
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: 已开启短信直接投递 (AT+CNMI=2,2,0,0,0)
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: 已设置短信存储区 (SM)
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: 已设置字符集 UCS2 (AT+CSCS="UCS2")
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: 信号强度
+Jun 24 10:06:07 armbian node[1919144]:     csq: "+CSQ: 99,99"
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: SIM 卡状态
+Jun 24 10:06:07 armbian node[1919144]:     cpin: "+CPIN: READY"
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] INFO: 开始扫描未读短信...
+Jun 24 10:06:07 armbian node[1919144]: [2026-06-24 10:06:07] ERROR: 扫描未读短信失败
+Jun 24 10:06:07 armbian node[1919144]:     err: {
+Jun 24 10:06:07 armbian node[1919144]:       "type": "Error",
+Jun 24 10:06:07 armbian node[1919144]:       "message": "AT 错误: +CMS ERROR: 302",
+Jun 24 10:06:07 armbian node[1919144]:       "stack":
+Jun 24 10:06:07 armbian node[1919144]:           Error: AT 错误: +CMS ERROR: 302
+Jun 24 10:06:07 armbian node[1919144]:               at Modem._onLine (file:///opt/sms-forwarder/src/serial/modem.js:361:27)
+Jun 24 10:06:07 armbian node[1919144]:               at ReadlineParser.<anonymous> (file:///opt/sms-forwarder/src/serial/modem.js:148:46)
+Jun 24 10:06:07 armbian node[1919144]:               at ReadlineParser.emit (node:events:519:28)
+Jun 24 10:06:07 armbian node[1919144]:               at addChunk (node:internal/streams/readable:561:12)
+Jun 24 10:06:07 armbian node[1919144]:               at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+Jun 24 10:06:07 armbian node[1919144]:               at Readable.push (node:internal/streams/readable:392:5)
+Jun 24 10:06:07 armbian node[1919144]:               at ReadlineParser._transform (/opt/sms-forwarder/node_modules/@serialport/parser-delimiter/dist/index.js:31:18)
+Jun 24 10:06:07 armbian node[1919144]:               at Transform._write (node:internal/streams/transform:171:8)
+Jun 24 10:06:07 armbian node[1919144]:               at writeOrBuffer (node:internal/streams/writable:572:12)
+Jun 24 10:06:07 armbian node[1919144]:               at _write (node:internal/streams/writable:501:10)
+Jun 24 10:06:07 armbian node[1919144]:     }
+Jun 24 10:06:10 armbian node[1919144]: [2026-06-24 10:06:10] WARN: 串口已断开
+Jun 24 10:06:10 armbian node[1919144]: [2026-06-24 10:06:10] INFO: 等待重连...
+Jun 24 10:06:10 armbian node[1919144]:     attempt: 1
+Jun 24 10:06:10 armbian node[1919144]:     delay: 5000
+Jun 24 10:06:15 armbian node[1919144]: [2026-06-24 10:06:15] INFO: 尝试重连串口
+Jun 24 10:06:15 armbian node[1919144]:     attempt: 1
+Jun 24 10:06:15 armbian node[1919144]: [2026-06-24 10:06:15] INFO: 串口已打开
+Jun 24 10:06:15 armbian node[1919144]:     port: "/dev/ttyUSB0"
+Jun 24 10:06:15 armbian node[1919144]:     baudRate: 115200
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: 串口重连成功，重新初始化模块
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: AT 通信正常
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: 已设置文本模式 (AT+CMGF=1)
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: 已关闭 RNDIS 网卡 (AT+RNDISCALL=0,0)
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: 已开启短信直接投递 (AT+CNMI=2,2,0,0,0)
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: 已设置短信存储区 (SM)
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: 已设置字符集 UCS2 (AT+CSCS="UCS2")
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: 信号强度
+Jun 24 10:06:16 armbian node[1919144]:     csq: "+CSQ: 99,99"
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: SIM 卡状态
+Jun 24 10:06:16 armbian node[1919144]:     cpin: "+CPIN: READY"
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] INFO: 开始扫描未读短信...
+Jun 24 10:06:16 armbian node[1919144]: [2026-06-24 10:06:16] ERROR: 扫描未读短信失败
+Jun 24 10:06:16 armbian node[1919144]:     err: {
+Jun 24 10:06:16 armbian node[1919144]:       "type": "Error",
+Jun 24 10:06:16 armbian node[1919144]:       "message": "AT 错误: +CMS ERROR: 302",
+Jun 24 10:06:16 armbian node[1919144]:       "stack":
+Jun 24 10:06:16 armbian node[1919144]:           Error: AT 错误: +CMS ERROR: 302
+Jun 24 10:06:16 armbian node[1919144]:               at Modem._onLine (file:///opt/sms-forwarder/src/serial/modem.js:361:27)
+Jun 24 10:06:16 armbian node[1919144]:               at ReadlineParser.<anonymous> (file:///opt/sms-forwarder/src/serial/modem.js:148:46)
+Jun 24 10:06:16 armbian node[1919144]:               at ReadlineParser.emit (node:events:519:28)
+Jun 24 10:06:16 armbian node[1919144]:               at addChunk (node:internal/streams/readable:561:12)
+Jun 24 10:06:16 armbian node[1919144]:               at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+Jun 24 10:06:16 armbian node[1919144]:               at Readable.push (node:internal/streams/readable:392:5)
+Jun 24 10:06:16 armbian node[1919144]:               at ReadlineParser._transform (/opt/sms-forwarder/node_modules/@serialport/parser-delimiter/dist/index.js:31:18)
+Jun 24 10:06:16 armbian node[1919144]:               at Transform._write (node:internal/streams/transform:171:8)
+Jun 24 10:06:16 armbian node[1919144]:               at writeOrBuffer (node:internal/streams/writable:572:12)
+Jun 24 10:06:16 armbian node[1919144]:               at _write (node:internal/streams/writable:501:10)
+Jun 24 10:06:16 armbian node[1919144]:     }
+Jun 24 10:06:20 armbian node[1919144]: [2026-06-24 10:06:19] WARN: 串口已断开
+Jun 24 10:06:20 armbian node[1919144]: [2026-06-24 10:06:19] INFO: 等待重连...
+Jun 24 10:06:20 armbian node[1919144]:     attempt: 1
+Jun 24 10:06:20 armbian node[1919144]:     delay: 5000
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 尝试重连串口
+Jun 24 10:06:25 armbian node[1919144]:     attempt: 1
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 串口已打开
+Jun 24 10:06:25 armbian node[1919144]:     port: "/dev/ttyUSB0"
+Jun 24 10:06:25 armbian node[1919144]:     baudRate: 115200
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: Web: 发送短信
+Jun 24 10:06:25 armbian node[1919144]:     phone: "10000"
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] ERROR: Web: 发送短信失败
+Jun 24 10:06:25 armbian node[1919144]:     phone: "10000"
+Jun 24 10:06:25 armbian node[1919144]:     err: {
+Jun 24 10:06:25 armbian node[1919144]:       "type": "Error",
+Jun 24 10:06:25 armbian node[1919144]:       "message": "AT 错误: +CMS ERROR: 304",
+Jun 24 10:06:25 armbian node[1919144]:       "stack":
+Jun 24 10:06:25 armbian node[1919144]:           Error: AT 错误: +CMS ERROR: 304
+Jun 24 10:06:25 armbian node[1919144]:               at Modem._onLine (file:///opt/sms-forwarder/src/serial/modem.js:361:27)
+Jun 24 10:06:25 armbian node[1919144]:               at ReadlineParser.<anonymous> (file:///opt/sms-forwarder/src/serial/modem.js:148:46)
+Jun 24 10:06:25 armbian node[1919144]:               at ReadlineParser.emit (node:events:519:28)
+Jun 24 10:06:25 armbian node[1919144]:               at addChunk (node:internal/streams/readable:561:12)
+Jun 24 10:06:25 armbian node[1919144]:               at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+Jun 24 10:06:25 armbian node[1919144]:               at Readable.push (node:internal/streams/readable:392:5)
+Jun 24 10:06:25 armbian node[1919144]:               at ReadlineParser._transform (/opt/sms-forwarder/node_modules/@serialport/parser-delimiter/dist/index.js:31:18)
+Jun 24 10:06:25 armbian node[1919144]:               at Transform._write (node:internal/streams/transform:171:8)
+Jun 24 10:06:25 armbian node[1919144]:               at writeOrBuffer (node:internal/streams/writable:572:12)
+Jun 24 10:06:25 armbian node[1919144]:               at _write (node:internal/streams/writable:501:10)
+Jun 24 10:06:25 armbian node[1919144]:     }
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 串口重连成功，重新初始化模块
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: AT 通信正常
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 已设置文本模式 (AT+CMGF=1)
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 已关闭 RNDIS 网卡 (AT+RNDISCALL=0,0)
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 已开启短信直接投递 (AT+CNMI=2,2,0,0,0)
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 已设置短信存储区 (SM)
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 已设置字符集 UCS2 (AT+CSCS="UCS2")
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 信号强度
+Jun 24 10:06:25 armbian node[1919144]:     csq: "+CSQ: 99,99"
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: SIM 卡状态
+Jun 24 10:06:25 armbian node[1919144]:     cpin: "+CPIN: READY"
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] INFO: 开始扫描未读短信...
+Jun 24 10:06:25 armbian node[1919144]: [2026-06-24 10:06:25] ERROR: 扫描未读短信失败
+Jun 24 10:06:25 armbian node[1919144]:     err: {
+Jun 24 10:06:25 armbian node[1919144]:       "type": "Error",
+Jun 24 10:06:25 armbian node[1919144]:       "message": "AT 错误: +CMS ERROR: 302",
+Jun 24 10:06:25 armbian node[1919144]:       "stack":
+Jun 24 10:06:25 armbian node[1919144]:           Error: AT 错误: +CMS ERROR: 302
+Jun 24 10:06:25 armbian node[1919144]:               at Modem._onLine (file:///opt/sms-forwarder/src/serial/modem.js:361:27)
+Jun 24 10:06:25 armbian node[1919144]:               at ReadlineParser.<anonymous> (file:///opt/sms-forwarder/src/serial/modem.js:148:46)
+Jun 24 10:06:25 armbian node[1919144]:               at ReadlineParser.emit (node:events:519:28)
+Jun 24 10:06:25 armbian node[1919144]:               at addChunk (node:internal/streams/readable:561:12)
+Jun 24 10:06:25 armbian node[1919144]:               at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+Jun 24 10:06:25 armbian node[1919144]:               at Readable.push (node:internal/streams/readable:392:5)
+Jun 24 10:06:25 armbian node[1919144]:               at ReadlineParser._transform (/opt/sms-forwarder/node_modules/@serialport/parser-delimiter/dist/index.js:31:18)
+Jun 24 10:06:25 armbian node[1919144]:               at Transform._write (node:internal/streams/transform:171:8)
+Jun 24 10:06:25 armbian node[1919144]:               at writeOrBuffer (node:internal/streams/writable:572:12)
+Jun 24 10:06:25 armbian node[1919144]:               at _write (node:internal/streams/writable:501:10)
+Jun 24 10:06:25 armbian node[1919144]:     }
+Jun 24 10:06:29 armbian node[1919144]: [2026-06-24 10:06:29] WARN: 串口已断开
+Jun 24 10:06:29 armbian node[1919144]: [2026-06-24 10:06:29] INFO: 等待重连...
+Jun 24 10:06:29 armbian node[1919144]:     attempt: 1
+Jun 24 10:06:29 armbian node[1919144]:     delay: 5000
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 尝试重连串口
+Jun 24 10:06:34 armbian node[1919144]:     attempt: 1
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 串口已打开
+Jun 24 10:06:34 armbian node[1919144]:     port: "/dev/ttyUSB0"
+Jun 24 10:06:34 armbian node[1919144]:     baudRate: 115200
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 串口重连成功，重新初始化模块
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: AT 通信正常
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 已设置文本模式 (AT+CMGF=1)
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 已关闭 RNDIS 网卡 (AT+RNDISCALL=0,0)
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 已开启短信直接投递 (AT+CNMI=2,2,0,0,0)
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 已设置短信存储区 (SM)
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 已设置字符集 UCS2 (AT+CSCS="UCS2")
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 信号强度
+Jun 24 10:06:34 armbian node[1919144]:     csq: "+CSQ: 99,99"
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: SIM 卡状态
+Jun 24 10:06:34 armbian node[1919144]:     cpin: "[I]-[ProDiAiiAivTimeTask no task] [I]-[ProAivAiiWarmTask] no warm [I]-[ProDiWarmTask.no di warn] +CPIN: READY"
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] INFO: 开始扫描未读短信...
+Jun 24 10:06:34 armbian node[1919144]: [2026-06-24 10:06:34] ERROR: 扫描未读短信失败
+Jun 24 10:06:34 armbian node[1919144]:     err: {
+Jun 24 10:06:34 armbian node[1919144]:       "type": "Error",
+Jun 24 10:06:34 armbian node[1919144]:       "message": "AT 错误: +CMS ERROR: 302",
+Jun 24 10:06:34 armbian node[1919144]:       "stack":
+Jun 24 10:06:34 armbian node[1919144]:           Error: AT 错误: +CMS ERROR: 302
+Jun 24 10:06:34 armbian node[1919144]:               at Modem._onLine (file:///opt/sms-forwarder/src/serial/modem.js:361:27)
+Jun 24 10:06:34 armbian node[1919144]:               at ReadlineParser.<anonymous> (file:///opt/sms-forwarder/src/serial/modem.js:148:46)
+Jun 24 10:06:34 armbian node[1919144]:               at ReadlineParser.emit (node:events:519:28)
+Jun 24 10:06:34 armbian node[1919144]:               at addChunk (node:internal/streams/readable:561:12)
+Jun 24 10:06:34 armbian node[1919144]:               at readableAddChunkPushByteMode (node:internal/streams/readable:512:3)
+Jun 24 10:06:34 armbian node[1919144]:               at Readable.push (node:internal/streams/readable:392:5)
+Jun 24 10:06:34 armbian node[1919144]:               at ReadlineParser._transform (/opt/sms-forwarder/node_modules/@serialport/parser-delimiter/dist/index.js:31:18)
+Jun 24 10:06:34 armbian node[1919144]:               at Transform._write (node:internal/streams/transform:171:8)
+Jun 24 10:06:34 armbian node[1919144]:               at writeOrBuffer (node:internal/streams/writable:572:12)
+Jun 24 10:06:34 armbian node[1919144]:               at _write (node:internal/streams/writable:501:10)
+Jun 24 10:06:34 armbian node[1919144]:     }
